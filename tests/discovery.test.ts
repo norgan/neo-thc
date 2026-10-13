@@ -329,7 +329,8 @@ test('real runtime rejects fixture routes and excludes synthetic history before 
   let hiddenId='';
   try {
     seed.ingest([real,{...real,id:'hidden-demo-event',synthetic:true,source:'fixture-v1',subjectKey:'demo',label:'Hidden demo name'},
-      {...real,id:'untagged-old-event',synthetic:undefined as unknown as boolean,source:'fixture-v1',subjectKey:'old',label:'Old sample'}]);
+      {...real,id:'untagged-old-event',synthetic:undefined as unknown as boolean,source:'fixture-v1',subjectKey:'old',label:'Old sample'},
+      {...real,id:'numeric-zero-tag',synthetic:0 as unknown as boolean,subjectKey:'invalid-zero',label:'Hidden malformed tag'}]);
     hiddenId=seed.assets().find((asset)=>asset.label==='Hidden demo name')!.id;
     // Fill only the legacy job budget. It must not block normal real discovery.
     for(let index=0;index<200;index++)seed.saveJob({id:'old-'+index,requestId:'legacy-request-'+index,spec:{mode:'initial',scope:['fixture:nas'],exclusions:[],intervalMs:1000,maxCycles:1,maxDurationMs:1000},
@@ -351,7 +352,7 @@ test('real runtime rejects fixture routes and excludes synthetic history before 
     assert.equal(store.assets().length,1);
   } finally {await app.close();}
   const preserved=new Store(path);
-  try {assert.equal(preserved.observationCount(),3);assert.equal(preserved.jobs().length,201);} finally {preserved.close();await rm(directory,{recursive:true,force:true});}
+  try {assert.equal(preserved.observationCount(),4);assert.equal(preserved.jobs().length,201);} finally {preserved.close();await rm(directory,{recursive:true,force:true});}
 });
 
 test('system defaults are interface-specific, bounded, single-flight and never guess off-link DNS',async()=>{

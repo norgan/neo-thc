@@ -4,7 +4,7 @@ import type { Asset, Job, Observation, ObservationInput } from '../shared/types.
 
 export const MAX_OBSERVATIONS = 10_000;
 export const MAX_JOBS = 200;
-const realEvidence = "json_extract(payload, '$.synthetic') = 0 AND json_extract(payload, '$.source') = 'discovery-v1'";
+const realEvidence = "json_type(payload, '$.synthetic') = 'false' AND json_extract(payload, '$.source') = 'discovery-v1'";
 export const isRealObservation = (value: ObservationInput): boolean => value.synthetic === false && value.source === 'discovery-v1';
 export const isRealJob = (job: Job): boolean => job.synthetic !== true && !!job.spec.discovery && job.spec.scope.length === 1 && job.spec.scope[0] === 'discovery:ipv4';
 
