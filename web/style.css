@@ -5,4 +5,7 @@
 
 select { width: 100%; max-width: 100%; padding: .7rem; border: 1px solid var(--line); border-radius: .5rem; background: white; color: inherit; font: inherit; }
 
-.field textarea { width:100%; max-width:100%; min-height:5rem; resize:vertical; font:inherit; padding:.7rem; color:inherit; background:var(--panel); border:1px solid var(--line); border-radius:.5rem; }
+.field textarea { width:100%; max-width:100%; min-height:5rem; resize:vertical; font:inherit; padding:.7rem; color:inherit; background:#fff; border:1px solid #8daba0; border-radius:.5rem; }
+
+textarea:focus-visible,select:focus-visible{outline:3px solid #497cc9;outline-offset:3px}
+.badge.completed_with_issues{background:#f6f0d9;color:#625322}

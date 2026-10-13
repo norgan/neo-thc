@@ -8,7 +8,7 @@ import { parseDiscovery, cidrRange } from '../server/discovery-scope.js';
 import { discoveryQuery, parseAdvertisement, readName, MDNS_NAME, SSDP_QUERY, parseSsdp } from '../server/discovery-protocols.mjs';
 import { tcpProbe, ptrProbe, advertise, pool } from '../server/discovery-network.mjs';
 import { validateResult } from '../server/discovery-result.mjs';
-import { discoveryObservation } from '../server/discovery-runner.js';
+import { discoveryObservation, validateOutcomes } from '../server/discovery-runner.js';
 import { TestDiscoveryCollector as DiscoveryCollector } from './support/discovery.js';
 import { createApp as createRealApp } from '../server/app.js';
 import { formBudget } from '../shared/discovery-form.js';
@@ -391,4 +391,34 @@ test('method diagnostics preserve successful candidates and distinguish complete
   for(const [code,expected] of [['EACCES','access_denied'],['EADDRNOTAVAIL','source_unavailable'],['ETIMEOUT','timeout'],['EREFUSED','refused'],['PRIVATE_UNKNOWN','io_error']]) {
     assert.equal(networkIssue({code,message:'private diagnostic'}),expected);
   }
+});
+
+test('socket and resolver diagnostics distinguish expected silence from actionable local issues',async()=>{
+  const {Resolver}=await import('node:dns/promises');
+  for(const code of ['EACCES','EADDRNOTAVAIL']) {
+    const issues:string[]=[];
+    class Socket extends EventEmitter {destroy(){queueMicrotask(()=>this.emit('close'));return this;}}
+    const connect=(()=>{const socket=new Socket();queueMicrotask(()=>socket.emit('error',Object.assign(new Error('private'),{code})));return socket;}) as unknown as typeof createConnection;
+    assert.equal(await tcpProbe('192.0.2.1',443,iface.address,new AbortController().signal,connect,(issue)=>issues.push(issue)),'error');
+    assert.deepEqual(issues,[code==='EACCES'?'access_denied':'source_unavailable']);
+  }
+  for(const code of ['ENOTFOUND','ENODATA','ETIMEOUT','EREFUSED']) {
+    const resolver={setLocalAddress(){},setServers(){},cancel(){},reverse:async()=>{throw Object.assign(new Error('private'),{code});}};
+    const outcome=await ptrProbe('192.0.2.1','192.0.2.53',iface.address,new AbortController().signal,()=>resolver as unknown as InstanceType<typeof Resolver>);
+    if(code==='ENOTFOUND'||code==='ENODATA'){assert.equal(outcome.state,'no_data');assert.equal(outcome.issue,undefined);}
+    else {assert.equal(outcome.state,'error');assert.equal(outcome.issue,code==='ETIMEOUT'?'timeout':'refused');}
+    assert.ok(!JSON.stringify(outcome).includes('private'));
+  }
+  class Udp extends EventEmitter {
+    bind(_port:number,_address:string,callback:()=>void){queueMicrotask(callback);}
+    setTTL(){}setMulticastTTL(){}setMulticastInterface(){}
+    send(_packet:Buffer,_port:number,_address:string,callback:(error:Error)=>void){callback(Object.assign(new Error('private'),{code:'EACCES'}));}
+    close(){}
+  }
+  const result=await advertise('mdns',plan({cidr:iface.cidr,methods:['mdns'],ports:[],linkScopeConfirmed:true}),new AbortController().signal,(()=>new Udp()) as unknown as typeof createSocket);
+  assert.equal(result.failed,true);assert.equal(result.issue,'access_denied');assert.equal(result.found.size,0);
+  const valid={method:'tcp',attempted:2,completed:2,responses:1,durationMs:10,issues:[]};
+  assert.equal(validateOutcomes([valid],plan()).length,1);
+  assert.throws(()=>validateOutcomes([{...valid,issues:['private diagnostic']}],plan()));
+  assert.throws(()=>validateOutcomes([{...valid,completed:99999}],plan()));
 });

@@ -118,6 +118,8 @@ export class DiscoveryCollector implements CollectorAdapter {
             if (Object.keys(message).some((key) => !['v','attemptId','type','failures','outcomes'].includes(key)) || !Array.isArray(message.failures) ||
               message.failures.length > 6 || message.failures.some((code) => !['packet_cap','socket_error','dns_error','tcp_error','deadline','collector_error'].includes(code))) throw new Error('completion');
             const outcomes=validateOutcomes(message.outcomes,plan);
+            if(seen.size===plan.targets.length && !message.failures.includes('collector_error') && !message.failures.includes('deadline') &&
+              outcomes.some((outcome)=>outcome.completed!==(outcome.method==='tcp'?plan.tcpBudget:outcome.method==='ptr'?plan.dnsBudget:1))) throw new Error('Incomplete counters');
             context.onOutcomes?.(outcomes);
             const methodIssues=outcomes.some((outcome)=>outcome.issues.length);
             void finish(seen.size!==plan.targets.length || message.failures.includes('collector_error') || message.failures.includes('deadline')
@@ -142,7 +144,7 @@ export function validateOutcomes(value:unknown,plan:DiscoveryPlan):DiscoveryOutc
     if(['attempted','completed','responses','durationMs'].some((key)=>typeof row[key]!=='number'||!Number.isInteger(row[key])||row[key]<0)||
       (row.attempted as number)>budget||(row.completed as number)>(row.attempted as number)||
       (row.responses as number)>(method==='tcp'?plan.tcpBudget:plan.targets.length)||(row.durationMs as number)>60000||
-      !Array.isArray(row.issues)||row.issues.length>allowed.length||row.issues.some((issue)=>!allowed.includes(issue as DiscoveryIssue)))throw new Error('Invalid counters');
+      !Array.isArray(row.issues)||new Set(row.issues).size!==row.issues.length||row.issues.length>allowed.length||row.issues.some((issue)=>!allowed.includes(issue as DiscoveryIssue)))throw new Error('Invalid counters');
     return row as unknown as DiscoveryOutcome;
   });
 }

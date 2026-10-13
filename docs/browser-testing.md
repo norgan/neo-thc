@@ -1,6 +1,6 @@
 ## Real-only browser suite
 
-The current suite has eight cases in each of two Chromium viewports (16 total): real-only empty startup; actual-config prefill and manual edits; budget/token correction; preview/consent/repeated-click prevention; real evidence with synthetic-row exclusion; active-job lock/cancel; partial outcomes and API recovery; keyboard/navigation/link-wide consent. Browser API data is intercepted where needed; no live scan occurs. Read current PR checks for the exact corrected head. The following evidence is historical.
+All 16 cases passed at 7002b4a in [run 38344284713](https://github.com/norgan/neo-thc/actions/runs/38344284713); review follow-ups add the System freshness poll assertion. The current suite has eight cases in each of two Chromium viewports (16 total): real-only empty startup; actual-config prefill and manual edits; budget/token correction; preview/consent/repeated-click prevention; real evidence with synthetic-row exclusion; active-job lock/cancel; partial outcomes and API recovery; keyboard/navigation/link-wide consent. Browser API data is intercepted where needed; no live scan occurs. Read current PR checks for the exact corrected head. The following evidence is historical.
 
 # Browser verification
 

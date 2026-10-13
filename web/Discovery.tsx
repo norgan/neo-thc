@@ -33,6 +33,7 @@ export function Discovery({disabled,blockedReason,onStarted}:{disabled:boolean;b
   const [busy,setBusy] = useState(false);
   const [reload,setReload] = useState(0);
   const inFlight=useRef(false);
+  const configurationVersion=useRef(0);
   const requestId = useRef(crypto.randomUUID());
   const local = interfaces.find((item) => item.id === interfaceId);
   const link = selected.includes('mdns') || selected.includes('nbns') || selected.includes('ssdp');
@@ -43,7 +44,8 @@ export function Discovery({disabled,blockedReason,onStarted}:{disabled:boolean;b
     }).catch(() => { if (mounted) setError('Could not read local interfaces. Retry before selecting a scope.'); });
     return () => { mounted = false; };
   },[reload]);
-  useEffect(() => { setPreview(null);setConfirmed(false); },[interfaceId,cidr,selected,portText,resolver,linkApproved]);
+  useEffect(() => { configurationVersion.current++;setPreview(null);setConfirmed(false); },[interfaceId,cidr,selected,portText,resolver,linkApproved,local?.address,local?.netmask,local?.cidr]);
+  useEffect(() => {setLinkApproved(false);},[local?.address,local?.netmask,local?.cidr]);
   const budget=formBudget(local,cidr,selected,portText);
   const blockers=[...(disabled?[blockedReason||'Discovery is temporarily unavailable.']:[]),...budget.errors,
     ...(selected.includes('ptr')&&!resolver?['Choose an on-link IPv4 DNS resolver. Detected unsupported resolvers cannot be used automatically.']:[]),
@@ -62,7 +64,8 @@ export function Discovery({disabled,blockedReason,onStarted}:{disabled:boolean;b
   async function showPreview() {
     if(busy||blockers.length)return;
     setBusy(true);setError('');setPreview(null);setConfirmed(false);
-    try { setPreview((await api<{plan:DiscoveryPlan}>('preview',settings())).plan); }
+    const version=configurationVersion.current;
+    try { const result=await api<{plan:DiscoveryPlan}>('preview',settings());if(version===configurationVersion.current)setPreview(result.plan); }
     catch (error) { setError(error instanceof Error ? error.message : 'Could not preview discovery'); }
     finally { setBusy(false); }
   }

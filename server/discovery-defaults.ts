@@ -16,7 +16,7 @@ function readWindows(): Promise<string> {
 }
 export function parseWindowsDns(raw: string): Map<string, string[]> {
   if (Buffer.byteLength(raw) > 65536) throw new Error('DNS configuration too large');
-  const value: unknown=JSON.parse(raw);
+  const value: unknown=JSON.parse(raw.replace(/^\uFEFF/,''));
   const rows=Array.isArray(value)?value:[value];
   if(rows.length>128)throw new Error('DNS interface limit');
   const result=new Map<string,string[]>();

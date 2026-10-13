@@ -84,7 +84,8 @@ test('preview changes invalidate consent and repeated start sends exactly one re
 });
 
 test('network inventory and evidence exclude synthetic records even in a mixed API response',async({page},info)=>{
-  await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:snapshot([asset,{...asset,id:'hidden',label:'Hidden sample',latest:{...evidence,synthetic:true,source:'fixture-v1'}}])}));
+  let stale=false;
+  await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:snapshot([{...asset,freshness:stale?'stale':'fresh'},{...asset,id:'hidden',label:'Hidden sample',latest:{...evidence,synthetic:true,source:'fixture-v1'}}])}));
   await page.route('**/api/v1/assets/qa-asset',(route)=>route.fulfill({json:{asset,observations:[evidence,{...evidence,id:'hidden-history',synthetic:true}]}}));
   await page.goto('/');await nav(page,'Inventory').click();
   await expect(page.locator('.asset-grid article')).toHaveCount(1);await expect(page.getByText('Hidden sample')).toHaveCount(0);
@@ -92,7 +93,9 @@ test('network inventory and evidence exclude synthetic records even in a mixed A
   await expect(page.getByText('Network evidence',{exact:true}).first()).toBeVisible();
   await expect(page.getByText('discovery-v1',{exact:true}).first()).toBeVisible();
   await expect(page.getByText('TCP 443',{exact:true}).first()).toBeVisible();
-  await expect(page.locator('details')).toHaveCount(1);await screenshot(page,info,'real-evidence');await noOverflow(page);
+  await expect(page.locator('details')).toHaveCount(1);
+  stale=true;await expect(page.locator('.columns > section').first().locator('.badge.stale')).toHaveCount(1,{timeout:6000});
+  await screenshot(page,info,'real-evidence');await noOverflow(page);
 });
 
 test('active discovery explains the form lock and cancellation preserves saved evidence',async({page})=>{

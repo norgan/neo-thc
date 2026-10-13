@@ -83,6 +83,7 @@ function App() {
       .catch(()=>{if(!controller.signal.aborted)setDetailError('Could not load evidence. Retry or select another system.');});
     return()=>controller.abort();
   },[selected,evidenceId,refresh]);
+  const currentAsset=assets.find((asset)=>asset.id===selected)??detail?.asset;
   const choose=(asset:Asset)=>{setSelected(asset.id);setTab('System');};
   const blockedReason=!snapshot?(loadError||'Waiting for the local API.'):loadError?'Reconnect to the local API before starting discovery.'
     :snapshot.collectionError?snapshot.collectionError:running?'A discovery job is active. Open Activity to review progress or cancel it.':busy?'Finishing the current action.':'';
@@ -116,16 +117,16 @@ function App() {
         {asset.identityWarnings.length>0&&<p className="caution">Address reuse or identity ambiguity. Evidence is kept separate.</p>}
         <button onClick={()=>choose(asset)}>Inspect system</button>
       </article>)}</div></section>}
-    {tab==='System'&&<section><div className="section-title"><h2>{detail?.asset.label??'System evidence'}</h2><button onClick={()=>setTab('Inventory')}>Back to inventory</button></div>
+    {tab==='System'&&<section><div className="section-title"><h2>{currentAsset?.label??'System evidence'}</h2><button onClick={()=>setTab('Inventory')}>Back to inventory</button></div>
       {!selected&&<div className="panel">Choose an address candidate from Inventory to view its evidence.</div>}
       {detailError&&<div className="error" role="alert">{detailError} <button onClick={()=>setRefresh((value)=>value+1)}>Retry</button></div>}
       {selected&&!detail&&!detailError&&<p role="status">Loading evidence…</p>}
-      {detail&&<div className="columns"><section className="panel"><h3>Identity and current confidence</h3>
-        <div className="badges"><Badge value={detail.asset.health}/><Badge value={detail.asset.freshness}/></div>
+      {detail&&currentAsset&&<div className="columns"><section className="panel"><h3>Identity and current confidence</h3>
+        <div className="badges"><Badge value={currentAsset.health}/><Badge value={currentAsset.freshness}/></div>
         <dl><dt>Internal ID</dt><dd className="break">{detail.asset.id}</dd><dt>Identity basis</dt><dd>Job-scoped address candidate</dd></dl>
         <p className="muted">IP addresses are not permanent device identities. Separate jobs remain separate until identity can be verified.</p>
-        {detail.asset.identityWarnings.map((warning)=><p className="caution" key={warning}>{warning}</p>)}
-        {detail.asset.latest&&<Evidence observation={detail.asset.latest}/>}
+        {currentAsset.identityWarnings.map((warning)=><p className="caution" key={warning}>{warning}</p>)}
+        {currentAsset.latest&&<Evidence observation={currentAsset.latest}/>}
       </section><section className="panel"><h3>Observation history</h3><p className="muted">Latest 100 network observations; earlier evidence remains stored.</p>
         {detail.observations.map((observation)=><details key={observation.id}><summary>{time(observation.observedAt)} · {observation.status}</summary><Evidence observation={observation}/></details>)}
       </section></div>}
