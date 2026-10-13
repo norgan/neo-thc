@@ -2,7 +2,7 @@
 
 ## Current status
 
-**Passed baseline in GitHub Actions:** locked dependency installation, server/browser typechecks, 13 synthetic unit tests, 10 desktop/mobile Chromium cases, production build and Linux production-startup smoke at [head 982d34d](https://github.com/norgan/neo-thc/actions/runs/38333033553). The collector milestone adds 13 unit cases, two browser cases and compiled-worker smoke checks; its result is in current PR checks.
+**Passed collector milestone in GitHub Actions:** locked dependency installation, server/browser typechecks, 26 unit tests, 12 desktop/mobile Chromium cases, production build and Linux production-startup smoke at [head d459b88e](https://github.com/norgan/neo-thc/actions/runs/38334676302), 13 October 2026. Logs report 26 passed/0 failed and 12 browser cases passed in 48.2 seconds. Smoke exercised the actual compiled Proxmox worker and graceful shutdown. A subsequent review correction guards late fallback batches and adds a regression (27 unit tests total); current PR checks are authoritative for that final head.
 
 Historical foundation evidence follows:
 

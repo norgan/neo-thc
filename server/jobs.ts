@@ -75,7 +75,11 @@ async function collectWithDeadline(
     }, timeoutMs);
     context.signal.addEventListener('abort', onAbort, { once: true });
     if (context.signal.aborted) { onAbort(); return; }
-    Promise.resolve().then(() => adapter.collect(target, { ...context, signal: child.signal }))
+    const onBatch = (observations: ObservationInput[]) => {
+      if (settled || child.signal.aborted || context.signal.aborted) return;
+      context.onBatch?.(observations);
+    };
+    Promise.resolve().then(() => adapter.collect(target, { ...context, signal: child.signal, onBatch }))
       .then((value) => finish(null, value), () => finish(new Error('Collector unavailable')));
   });
 }

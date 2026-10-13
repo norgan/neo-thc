@@ -4,6 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createApp } from '../server/app.js';
 import { IsolatedCollector, proxmoxObservations, type FixtureScenario } from '../server/collector-runner.js';
 import { mockTransport, parseVersion, parseInventory, runProxmox, PVE_OPERATIONS, PROXMOX_TARGET } from '../server/proxmox.mjs';
+import { FixtureCollector, type CollectorAdapter } from '../server/collector.js';
 import { Store } from '../server/store.js';
 import type { Job, ObservationInput } from '../shared/types.js';
 
@@ -191,12 +192,15 @@ test('duplicate batch fails without double counting and post-done messages are i
   await assert.rejects(duplicate.collect(PROXMOX_TARGET, context({ onBatch: (items: ObservationInput[]) => received.push(...items) })));
   assert.equal(received.length, 2);
   const late = new IsolatedCollector({ [PROXMOX_TARGET]: 'late-batch' });
-  const completed = await late.collect(PROXMOX_TARGET, context());
-  assert.equal(completed.length, 5);
-  await delay(50);
-  assert.equal(completed.length, 5);
-  assert.equal(late.statistics.active, 0);
+  const accepted: ObservationInput[] = [];
+  await late.collect(PROXMOX_TARGET, context({ onBatch: (items: ObservationInput[]) => accepted.push(...items) }));
+  assert.equal(accepted.length, 5);
+  assert.ok(accepted.every((item) => !item.subjectKey.includes('late-node')));
+  const before = JSON.stringify(accepted);
   assert.equal((await late.collect('fixture:nas', context())).length, 1);
+  await delay(50);
+  assert.equal(JSON.stringify(accepted), before);
+  assert.equal(late.statistics.active, 0);
 });
 
 test('whole-job deadline and shutdown terminate real workers', async () => {
@@ -229,5 +233,39 @@ test('excluded mock integration launches no worker and arbitrary operation field
       const invalid = await app.inject({ method: 'POST', url: '/api/v1/jobs', headers, payload: { ...payload, [field]: 'not-allowed' } });
       assert.equal(invalid.statusCode, 400);
     }
+  } finally { await app.close(); }
+});
+
+test('timed-out fallback batches cannot modify finished jobs or a newer job', async () => {
+  const fixture = new FixtureCollector();
+  const late: { callback?: (items: ObservationInput[]) => void } = {};
+  const adapter: CollectorAdapter = {
+    id: fixture.id, capabilities: fixture.capabilities, targets: fixture.targets,
+    collect(target, context) {
+      if (target === 'fixture:gateway') {
+        late.callback = context.onBatch;
+        return new Promise(() => {});
+      }
+      return fixture.collect(target, context);
+    },
+  };
+  const { app, store } = createApp({ adapter, probeTimeoutMs: 20 });
+  try {
+    const first = await app.inject({ method: 'POST', url: '/api/v1/jobs', headers,
+      payload: { requestId: 'fallback-late-first', mode: 'initial', scope: ['fixture:gateway', 'fixture:nas'] } });
+    const firstId = first.json().job.id;
+    assert.equal((await terminal(store, firstId)).status, 'failed');
+    const second = await app.inject({ method: 'POST', url: '/api/v1/jobs', headers,
+      payload: { requestId: 'fallback-late-second', mode: 'initial', scope: ['fixture:nas'] } });
+    const secondId = second.json().job.id;
+    assert.equal((await terminal(store, secondId)).status, 'completed');
+    const before = JSON.stringify({ jobs: store.jobs(), assets: store.assets() });
+    assert.equal(typeof late.callback, 'function');
+    late.callback!(await fixture.collect('fixture:gateway', context()));
+    await delay(30);
+    assert.equal(JSON.stringify({ jobs: store.jobs(), assets: store.assets() }), before);
+    assert.equal(store.assets().length, 1);
+    assert.equal(store.job(firstId)!.observationsAdded, 1);
+    assert.equal(store.job(secondId)!.observationsAdded, 1);
   } finally { await app.close(); }
 });

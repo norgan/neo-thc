@@ -160,7 +160,7 @@ export function mockTransport(scenario = 'normal', cycle = 0) {
       if (scenario === 'empty-guests') return ok([]);
       return ok([
         { id: 'qemu/100', type: 'qemu', vmid: 100, node: cycle % 2 ? 'demo-b' : 'demo-a', name: 'Demo application VM', status: 'running' },
-        { id: 'qemu/101', type: 'qemu', vmid: 101, node: 'demo-a', name: 'Demo paused VM', status: 'stopped' },
+        { id: 'qemu/101', type: 'qemu', vmid: 101, node: 'demo-a', name: 'Demo stopped VM', status: 'stopped' },
         { id: 'lxc/200', type: 'lxc', vmid: 200, node: 'demo-b', name: 'Demo container', status: 'running' },
       ]);
     },

@@ -39,7 +39,7 @@ Proxmox resource responses can be permission-filtered. Successful empty lists an
 
 ## Verification and remaining limits
 
-The milestone adds focused unit tests, a desktop/mobile mock-inventory flow and actual compiled-worker startup smoke. Read the current PR workflow for pass/fail; source publication alone is not execution evidence. Existing identity, idempotency, bounded jobs, restart and storage-failure tests remain in the suite.
+The milestone passed 26 unit tests, 12 desktop/mobile cases and actual compiled-worker startup smoke in [run 38334676302](https://github.com/norgan/neo-thc/actions/runs/38334676302). Review corrections add a late-fallback-batch regression and strengthen the queued post-completion batch test. Read current PR checks for that final head; source publication alone is not execution evidence. Existing identity, idempotency, bounded jobs, restart and storage-failure tests remain in the suite.
 
 No live Proxmox, UniFi, OPNsense, agent, secrets, remote deployment or OS sandbox testing is included. Only the documented synthetic version is accepted.
 

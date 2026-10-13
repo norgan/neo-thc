@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-**Passed:** the 10-case desktop/mobile Chromium baseline at source head 982d34d3627d0afd7ad340100660d991a6c87004 in [run 38333033553](https://github.com/norgan/neo-thc/actions/runs/38333033553) on 13 October 2026. Successful desktop inventory and mobile evidence screenshots were also visually inspected. The collector milestone adds a sixth case per viewport; read current PR checks for its result.
+**Passed:** all 12 desktop/mobile Chromium cases, including simulated Proxmox evidence, at source head d459b88e8e3cf5c5adeda26e13f8ca0f58fb9180 in [run 38334676302](https://github.com/norgan/neo-thc/actions/runs/38334676302) on 13 October 2026. The earlier 10-case baseline also passed; its desktop inventory and mobile evidence screenshots were visually inspected. Read current PR checks for later review corrections.
 
 Pinned Microsoft Playwright 1.64.0 runs bundled Chromium on a GitHub-hosted Linux runner. The direct version and Node >=20 contract were checked against the [official package](https://github.com/microsoft/playwright/blob/v1.64.0/packages/playwright-test/package.json) and [release](https://github.com/microsoft/playwright/releases/tag/v1.64.0). Node 24 remains the application runtime.
 

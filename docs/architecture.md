@@ -4,7 +4,7 @@
 
 A single local Node 24 process serves the Fastify API and production React files. SQLite records assets, immutable normalized observations, and job snapshots. The default IsolatedCollector runs one fixed, trusted worker per selected target, producing synthetic examples without network or OS discovery calls. The browser polls a snapshot every two seconds without overlapping its own polls.
 
-GitHub Actions passed the earlier browser baseline (13 unit tests, 10 desktop/mobile Chromium cases, typechecks, production build and startup smoke). The collector milestone extends these checks; see current PR checks and testing.md for actual results. The wider requirements remain in requirements.md.
+GitHub Actions passed the collector milestone (26 unit tests, 12 desktop/mobile Chromium cases, typechecks, production build and compiled-worker startup smoke). A late-callback review regression extends the unit suite to 27; see current PR checks and testing.md for exact head results. The wider requirements remain in requirements.md.
 
 ### Main modules
 

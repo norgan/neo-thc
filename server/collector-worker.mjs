@@ -39,7 +39,11 @@ if (process.execArgv.length || Object.keys(process.env).length) {
     if (request.scenario === 'duplicate-batch') send({ type: 'batch', operation, records: toWire(resources) });
   });
   send({ type: 'done', failures });
-  if (request.scenario === 'late-batch') setTimeout(() => send({ type: 'batch', operation: 'pve.nodes', records: [] }), 20);
+  // Queue a valid, nonempty batch immediately after done to exercise the parent's settled guard.
+  if (request.scenario === 'late-batch') send({
+    type: 'batch', operation: 'pve.nodes',
+    records: [{ id: 'node/late-node', type: 'node', node: 'late-node', status: 'online' }],
+  });
 } else {
   send({ type: 'batch', operation: 'fixture', records: [{ target: request.target }] });
   if (request.scenario === 'duplicate-batch') send({ type: 'batch', operation: 'fixture', records: [{ target: request.target }] });

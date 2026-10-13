@@ -7,7 +7,7 @@ A local-first companion for understanding a home network and homelab through one
 
 ## Status: fixture foundation with passing automated checks
 
-This branch contains a TypeScript / Fastify / SQLite / React foundation. **The browser baseline passed 13 unit tests, 10 desktop/mobile Chromium cases, typechecks, production build and startup smoke** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38333033553), source head 982d34d). The new isolated-collector milestone adds tests and compiled-worker smoke coverage; read current PR checks for its actual result. Physical-device QA, comprehensive accessibility review, real integrations and deployment remain unverified.
+This branch contains a TypeScript / Fastify / SQLite / React foundation. **The collector milestone passed 26 unit tests, 12 desktop/mobile Chromium cases, typechecks, production build and startup smoke** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38334676302), source head d459b88e). That smoke includes the real compiled worker. A subsequent review correction adds a late-batch regression (27 unit tests total); read current PR checks for the final head result. Physical-device QA, comprehensive accessibility review, real integrations and deployment remain unverified.
 
 All device data is synthetic. “Initial” performs one fixture pass; “live” periodically repeats fixture observations. Neither mode scans the network, queries DNS, connects to platforms, reads local network interfaces, or collects credentials.
 
