@@ -44,7 +44,7 @@ export const test = base.extend<{ localApp: void }>({
       while (!ready && Date.now() < deadline) {
         if (exited) throw new Error('Isolated browser server exited before readiness');
         ready = await fetch(origin + '/api/v1/health', { signal: AbortSignal.timeout(500) })
-          .then(async (response) => response.ok && (await response.json()).runtime === 'semantic-inventory-v3', () => false);
+          .then(async (response) => response.ok && (await response.json()).runtime === 'network-overview-v4', () => false);
         if (!ready) await delay(50);
       }
       expect(ready, 'Isolated production server should become ready').toBe(true);

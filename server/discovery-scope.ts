@@ -5,10 +5,10 @@ import type { DiscoveryInterface, DiscoveryMethod, DiscoveryPlan, JobSpec } from
 import { RequestError } from './jobs.js';
 
 export const DISCOVERY_LIMITS = Object.freeze({
-  addresses: 256, ports: 8, tcpAttempts: 1024, tcpConcurrency: 16,
+  addresses: 256, ports: 64, tcpAttempts: 16384, tcpConcurrency: 32,
   tcpTimeoutMs: 400, dnsConcurrency: 8, dnsTimeoutMs: 500,
   datagramsPerMethod: 1, receivedDatagramsPerMethod: 256,
-  datagramBytes: 8192, discoveryWindowMs: 2000, jobMs: 60000,
+  datagramBytes: 8192, discoveryWindowMs: 2000, jobMs: 480000,
 });
 const fail = (message: string): never => { throw new RequestError(400, message); };
 export function ipv4Number(value: string): number {
@@ -49,7 +49,7 @@ function object(value: unknown): Record<string, unknown> {
 }
 export function parseDiscovery(body: unknown, interfaces: readonly DiscoveryInterface[], requireConfirmation = false) {
   const input = object(body);
-  if (Object.keys(input).some((key) => !['requestId', 'interfaceId', 'cidr', 'methods', 'ports', 'resolver', 'linkScopeConfirmed', 'confirmScope'].includes(key))) return fail('Unknown discovery setting');
+  if (Object.keys(input).some((key) => !['requestId', 'interfaceId', 'cidr', 'methods', 'ports', 'resolver', 'linkScopeConfirmed', 'confirmScope', 'glancesScheme', 'tcpConcurrency', 'tcpAttemptLimit', 'maxDurationMs'].includes(key))) return fail('Unknown discovery setting');
   if (typeof input.requestId !== 'string' || !/^[a-zA-Z0-9-]{8,80}$/.test(input.requestId)) return fail('Choose a valid request ID');
   const selected = interfaces.find((item) => item.id === input.interfaceId);
   if (!selected) return fail('Select a current local IPv4 interface');
@@ -64,8 +64,8 @@ export function parseDiscovery(body: unknown, interfaces: readonly DiscoveryInte
     input.methods.some((value) => !allowed.includes(value as DiscoveryMethod)) || new Set(input.methods).size !== input.methods.length) return fail('Explicitly select discovery methods');
   const methods = [...input.methods as DiscoveryMethod[]].sort();
   const ports = input.ports ?? [];
-  if (!Array.isArray(ports) || ports.length > 8 || ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65535) ||
-    new Set(ports).size !== ports.length || (methods.includes('tcp') ? ports.length === 0 : ports.length !== 0)) return fail('Select one to eight TCP ports only when TCP probing is enabled');
+  if (!Array.isArray(ports) || ports.length > 64 || ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65535) ||
+    new Set(ports).size !== ports.length || (methods.includes('tcp') ? ports.length === 0 : ports.length !== 0)) return fail('Select one to 64 TCP ports only when TCP probing is enabled');
   const targets: string[] = [];
   for (let n = range.first; n <= range.last; n++) {
     // Never connect to the selected link's network/broadcast address or the collector itself.
@@ -74,7 +74,12 @@ export function parseDiscovery(body: unknown, interfaces: readonly DiscoveryInte
     targets.push(ipv4Text(n));
   }
   if (!targets.length) return fail('The scope contains no remote host addresses');
-  if (targets.length * ports.length > 1024) return fail(targets.length + ' targets × ' + ports.length + ' unique ports = ' + (targets.length * ports.length) + ' TCP attempts. Maximum 1024; choose at most ' + Math.floor(1024 / targets.length) + ' ports for this scope, or reduce the CIDR.');
+  const tcpConcurrency=input.tcpConcurrency??32,tcpAttemptLimit=input.tcpAttemptLimit??16384,maxDurationMs=input.maxDurationMs??240000;
+  if(typeof tcpConcurrency!=='number'||![8,16,32].includes(tcpConcurrency)||typeof tcpAttemptLimit!=='number'||![1024,4096,8192,16384].includes(tcpAttemptLimit)||
+    typeof maxDurationMs!=='number'||![60000,120000,240000,480000].includes(maxDurationMs))return fail('Choose supported concurrency, attempt budget and deadline values');
+  if(targets.length*ports.length>tcpAttemptLimit)return fail(targets.length+' targets × '+ports.length+' ports exceeds the chosen '+tcpAttemptLimit+' TCP-attempt budget. Raise the reviewed budget or reduce scope/ports.');
+  const estimatedMaxMs=Math.max(Math.ceil(targets.length*ports.length/tcpConcurrency)*500,Math.ceil(targets.length*ports.length/100)*1000,methods.includes('ptr')?Math.ceil(targets.length/8)*600:0)+4000+(input.glancesScheme?22000:0);
+  if(estimatedMaxMs>maxDurationMs)return fail('This scope and concurrency need a conservative '+Math.ceil(estimatedMaxMs/1000)+' second budget. Increase the deadline/concurrency or reduce scope/ports.');
   let resolver: string | null = null;
   if (methods.includes('ptr')) {
     if (typeof input.resolver !== 'string' || !isIPv4(input.resolver)) return fail('Choose the exact IPv4 DNS resolver; no default resolver is used');
@@ -82,7 +87,9 @@ export function parseDiscovery(body: unknown, interfaces: readonly DiscoveryInte
     const number = ipv4Number(resolver);
     if (number < link.first || number > link.last || number === link.first || number === link.last) return fail('For this first release the DNS resolver must be on the selected local subnet');
   } else if (input.resolver !== undefined && input.resolver !== '') return fail('A resolver is only accepted when reverse DNS is selected');
-  const linkMethod = methods.includes('mdns') || methods.includes('nbns') || methods.includes('ssdp');
+  const glancesScheme=input.glancesScheme;
+  if(glancesScheme!==undefined&&(typeof glancesScheme!=='string'||!['http','https'].includes(glancesScheme)))return fail('Choose HTTP or verified HTTPS for automatic Glances reads');
+  const linkMethod = glancesScheme!==undefined || methods.includes('mdns') || methods.includes('nbns') || methods.includes('ssdp');
   if (input.linkScopeConfirmed !== undefined && typeof input.linkScopeConfirmed !== 'boolean') return fail('Invalid link-scope confirmation');
   if (linkMethod && (link.prefix < 24 || link.prefix > 30 || range.cidr !== link.cidr || input.linkScopeConfirmed !== true)) return fail('Multicast/broadcast requires the entire selected /24–/30 interface subnet and explicit link-wide approval');
   if (linkMethod && interfaces.some((other) => {
@@ -94,10 +101,11 @@ export function parseDiscovery(body: unknown, interfaces: readonly DiscoveryInte
   if (requireConfirmation && input.confirmScope !== true) return fail('Preview and explicitly confirm this discovery scope first');
   const plan: DiscoveryPlan = {
     interface: { ...selected }, cidr: range.cidr, targets, methods, ports: [...ports].sort((a, b) => a - b),
-    resolver, linkScopeConfirmed: linkMethod,
+    resolver, linkScopeConfirmed: linkMethod, tcpConcurrency, tcpAttemptLimit, maxDurationMs, estimatedMaxMs,
     tcpBudget: targets.length * ports.length, dnsBudget: methods.includes('ptr') ? targets.length : 0,
     datagramBudget: Number(methods.includes('mdns')) + Number(methods.includes('nbns')) + Number(methods.includes('ssdp')),
+    ...(glancesScheme?{glances:{scheme:glancesScheme as 'http'|'https',maxEndpoints:2 as const,maxQueries:7 as const,maxRequests:12 as const,resolveMs:8000 as const}}:{}),
   };
-  const spec: JobSpec = { mode: 'initial', scope: ['discovery:ipv4'], exclusions: [], intervalMs: 1000, maxCycles: 1, maxDurationMs: 60000, discovery: plan };
+  const spec: JobSpec = { mode: 'initial', scope: ['discovery:ipv4'], exclusions: [], intervalMs: 1000, maxCycles: 1, maxDurationMs, discovery: plan };
   return { requestId: input.requestId, plan, spec };
 }

@@ -118,7 +118,7 @@ try {
     try {
       const response = await api('/api/v1/health');
       const health = await response.json();
-      return health.status === 'ok' && health.synthetic === false && health.runtime === 'semantic-inventory-v3';
+      return health.status === 'ok' && health.synthetic === false && health.runtime === 'network-overview-v4';
     } catch { return false; }
   }, 10_000, 'Compiled server never became ready');
 
@@ -144,7 +144,7 @@ try {
   assert.equal(inventory.assets[0].latest.services[0].note.includes('open'),true);
   const snapshot=await (await api('/api/v1/snapshot')).json();
   assert.equal(snapshot.systems.length,1);assert.equal(snapshot.systems[0].responded,true);
-  assert.equal(snapshot.runtime,'semantic-inventory-v3');assert.deepEqual(snapshot.targets,[]);
+  assert.equal(snapshot.runtime,'network-overview-v4');assert.deepEqual(snapshot.targets,[]);
   const removed=await fetch(base+'/api/v1/jobs',{method:'POST',headers:{'Content-Type':'application/json','X-Neo-Client':'local-ui'},
     body:JSON.stringify({requestId:'no-runtime-fixture',mode:'initial',scope:['fixture:nas']}),signal:AbortSignal.timeout(1000)});
   assert.equal(removed.status,404);

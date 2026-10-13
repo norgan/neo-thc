@@ -124,3 +124,12 @@ export async function pool(values, concurrency, action) {
     while (next < values.length) await action(values[next++]);
   }));
 }
+
+
+/** Global pacing: at most one TCP start per 10 ms, regardless of fast refusals.
+ * @param {AbortSignal} signal @param {()=>number} now @param {(ms:number)=>Promise<void>} sleep
+ */
+export function createPacer(signal,now=Date.now,sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms))){
+  let next=now();
+  return async()=>{const at=Math.max(now(),next);next=at+10;const wait=at-now();if(wait>0)await sleep(wait);signal.throwIfAborted();};
+}

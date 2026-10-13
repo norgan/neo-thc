@@ -7,7 +7,7 @@ function range(value:string) {
   const address=parts.reduce((n,part)=>n*256+part,0),size=2**(32-prefix),first=Math.floor(address/size)*size;
   return {first,last:first+size-1,size,prefix};
 }
-export function formBudget(iface:DiscoveryInterface|undefined,cidr:string,methods:DiscoveryMethod[],portText:string) {
+export function formBudget(iface:DiscoveryInterface|undefined,cidr:string,methods:DiscoveryMethod[],portText:string,attemptLimit=16384) {
   const scope=range(cidr),link=iface?range(iface.cidr):null;
   const tokens=portText.split(/[,\n]/).map((value)=>value.trim()).filter(Boolean);
   const ports=tokens.map(Number),uniquePorts=new Set(ports).size;
@@ -21,10 +21,10 @@ export function formBudget(iface:DiscoveryInterface|undefined,cidr:string,method
     const own=iface!.address.split('.').reduce((n,part)=>n*256+Number(part),0);
     for(let n=scope.first;n<=scope.last;n++)if(n!==own&&!(link.prefix<=30&&(n===link.first||n===link.last)))targets++;
   }
-  if(methods.includes('tcp')&&(!tokens.length||tokens.length>8||tokens.some((value)=>!/^\d{1,5}$/.test(value))||ports.some((port)=>port<1||port>65535)||uniquePorts!==ports.length))
-    errors.push('TCP ports: enter 1–8 unique whole numbers from 1 to 65535, separated by commas or new lines.');
+  if(methods.includes('tcp')&&(!tokens.length||tokens.length>64||tokens.some((value)=>!/^\d{1,5}$/.test(value))||ports.some((port)=>port<1||port>65535)||uniquePorts!==ports.length))
+    errors.push('TCP ports: enter 1–64 unique whole numbers from 1 to 65535, separated by commas or new lines.');
   const attempts=methods.includes('tcp')?targets*uniquePorts:0;
-  const maxPorts=targets?Math.min(8,Math.floor(1024/targets)):8;
-  if(attempts>1024)errors.push('TCP budget exceeds 1,024 attempts. Choose at most '+maxPorts+' ports for this scope, or reduce the CIDR.');
+  const maxPorts=targets?Math.min(64,Math.floor(attemptLimit/targets)):64;
+  if(attempts>attemptLimit)errors.push('TCP budget exceeds '+attemptLimit.toLocaleString('en-US')+' attempts. Choose at most '+maxPorts+' ports for this scope, or reduce the CIDR.');
   return {targets,ports,uniquePorts,attempts,maxPorts,errors};
 }

@@ -60,6 +60,8 @@ export class DiscoveryCollector implements CollectorAdapter {
       requestId: context.jobId, interfaceId: plan.interface.id, cidr: plan.cidr,
       methods: plan.methods, ports: plan.ports, resolver: plan.resolver ?? undefined,
       linkScopeConfirmed: plan.linkScopeConfirmed, confirmScope: true,
+      ...(plan.glances?{glancesScheme:plan.glances.scheme}:{}),
+      tcpConcurrency:plan.tcpConcurrency,tcpAttemptLimit:plan.tcpAttemptLimit,maxDurationMs:plan.maxDurationMs,
     }, this.interfaces(), true).plan;
     if (JSON.stringify(current) !== JSON.stringify(plan)) throw new Error('Discovery interface or scope changed');
     const attemptId = randomUUID();
@@ -88,7 +90,7 @@ export class DiscoveryCollector implements CollectorAdapter {
         if (error) reject(error); else resolve(collected);
       };
       const abort = () => { void finish(new Error('Discovery cancelled')); };
-      const deadline = setTimeout(() => { void finish(new Error('Discovery deadline')); }, Math.min(context.timeoutMs ?? 60000, 60000));
+      const deadline = setTimeout(() => { void finish(new Error('Discovery deadline')); }, Math.min(context.timeoutMs ?? plan.maxDurationMs ?? 60000, plan.maxDurationMs ?? 60000));
       context.signal.addEventListener('abort', abort, { once:true });
       worker.once('error', () => { void finish(new Error('Discovery worker failed')); });
       worker.once('exit', () => { if (!settled) void finish(new Error('Discovery worker exited early')); });

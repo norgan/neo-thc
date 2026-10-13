@@ -68,6 +68,7 @@ export interface Job {
   errors: string[];
   discoveryProgress?: DiscoveryProgress;
   discoveryOutcomes?: DiscoveryOutcome[];
+  glancesEnrichment?: GlancesEnrichment;
 }
 export interface FixtureTarget {
   key: string;
@@ -99,6 +100,11 @@ export interface DiscoveryPlan {
   tcpBudget: number;
   dnsBudget: number;
   datagramBudget: number;
+  tcpConcurrency?:number;
+  tcpAttemptLimit?:number;
+  maxDurationMs?:number;
+  estimatedMaxMs?:number;
+  glances?: {scheme:'http'|'https';maxEndpoints:2;maxQueries:7;maxRequests:12;resolveMs:8000};
 }
 export interface DiscoveryProgress {
   addressesCompleted: number; totalAddresses: number;
@@ -135,4 +141,17 @@ export interface GlancesStats {
   memory:{percent:number;totalBytes:number;availableBytes:number}|null;
   filesystems:{mount:string;type:string|null;sizeBytes:number;freeBytes:number;usedBytes:number;percent:number}[]|null;
   uptime:string|null; issues:{section:string;code:string}[];
+}
+
+export interface GlancesCandidate {
+  address:string; instance:string; port:number|null; protocol:'rest'|'rpc'|'unknown';
+  ttlMs:number; issue:string|null;
+}
+export interface GlancesResolution {
+  candidates:GlancesCandidate[]; datagramsSent:number; packetsReceived:number; omitted:number; issues:string[];
+}
+export interface GlancesEnrichment {
+  phase:'resolving'|'reading'|'completed'|'cancelled';
+  datagramsSent:number; packetsReceived:number; omitted:number; issues:string[];
+  endpoints:(GlancesCandidate&{status:'pending'|'reading'|'complete'|'partial'|'failed'|'skipped';snapshotId?:string;reason?:string})[];
 }

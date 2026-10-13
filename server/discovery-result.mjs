@@ -41,10 +41,12 @@ export function validateWirePlan(value) {
   if (typeof iface.address !== 'string' || !isIPv4(iface.address) || typeof iface.netmask !== 'string' || !isIPv4(iface.netmask) ||
     typeof iface.cidr !== 'string' || typeof plan.cidr !== 'string' || !Array.isArray(plan.targets) ||
     plan.targets.length < 1 || plan.targets.length > 256 || plan.targets.some((address) => typeof address !== 'string' || !isIPv4(address)) ||
-    new Set(plan.targets).size !== plan.targets.length || !Array.isArray(plan.ports) || plan.ports.length > 8 ||
+    new Set(plan.targets).size !== plan.targets.length || !Array.isArray(plan.ports) || plan.ports.length > 64 ||
     plan.ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65535) ||
-    plan.targets.length * plan.ports.length > 1024 || !Array.isArray(plan.methods) || !plan.methods.length ||
+    plan.targets.length * plan.ports.length > 16384 || !Array.isArray(plan.methods) || !plan.methods.length ||
     plan.methods.some((method) => !['tcp','ptr','mdns','nbns','ssdp'].includes(method)) ||
+    (plan.tcpConcurrency!==undefined&&![8,16,32].includes(plan.tcpConcurrency))||
+    (plan.maxDurationMs!==undefined&&![60000,120000,240000,480000].includes(plan.maxDurationMs))||
     (plan.resolver !== null && (typeof plan.resolver !== 'string' || !isIPv4(plan.resolver)))) throw new Error('schema');
   return /** @type {import('../shared/types.js').DiscoveryPlan} */ (/** @type {unknown} */ (plan));
 }

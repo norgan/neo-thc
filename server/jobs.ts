@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { CollectionIssues, observationAllowed, type CollectorAdapter, type CollectionContext } from './collector.js';
-import type { Job, JobSpec, JobStatus, ObservationInput, DiscoveryProgress, DiscoveryOutcome } from '../shared/types.js';
+import type { Job, JobSpec, JobStatus, ObservationInput, DiscoveryProgress, DiscoveryOutcome, GlancesEnrichment } from '../shared/types.js';
 import { MAX_JOBS, Store } from './store.js';
 
 export class RequestError extends Error {
@@ -92,6 +92,8 @@ async function collectWithDeadline(
   });
 }
 
+export interface EnrichmentRunner {readonly problem:string|null;run(job:Job,signal:AbortSignal,publish:(state:GlancesEnrichment)=>void):Promise<boolean>}
+
 type Active = { job: Job; controller: AbortController; reason: JobStatus | null; done: Promise<void> };
 
 export class JobManager {
@@ -104,7 +106,7 @@ export class JobManager {
   get problem(): string | null {
     return this.storageFailed
       ? 'Job state could not be saved. Collection is disabled; activity may be incomplete. Check local storage and restart Neo.'
-      : this.adapter.problem ?? this.discoveryAdapter?.problem ?? null;
+      : this.adapter.problem ?? this.discoveryAdapter?.problem ?? this.enrichment?.problem ?? null;
   }
 
   private persist(job: Job): void {
@@ -115,7 +117,7 @@ export class JobManager {
     }
   }
 
-  constructor(private readonly store: Store, private readonly adapter: CollectorAdapter, private readonly probeTimeoutMs = 750, private readonly discoveryAdapter?: CollectorAdapter) {
+  constructor(private readonly store: Store, private readonly adapter: CollectorAdapter, private readonly probeTimeoutMs = 750, private readonly discoveryAdapter?: CollectorAdapter, private readonly enrichment?: EnrichmentRunner) {
     for (const job of store.jobs()) {
       if (job.status === 'queued' || job.status === 'running') {
         store.saveJob({ ...job, status: 'interrupted', finishedAt: Date.now(),
@@ -128,6 +130,7 @@ export class JobManager {
     if (this.closing) throw new RequestError(503, 'Application is shutting down');
     if (this.problem) throw new RequestError(503, this.problem);
     if (spec.discovery && !this.discoveryAdapter) throw new RequestError(503, 'Discovery is unavailable');
+    if(spec.discovery?.glances&&!this.enrichment)throw new RequestError(503,'Automatic Glances enrichment is unavailable');
     const existing = this.store.jobByRequest(requestId);
     if (existing) {
       if (JSON.stringify(existing.spec) !== JSON.stringify(spec)) throw new RequestError(409, 'requestId already belongs to different job settings');
@@ -193,7 +196,7 @@ export class JobManager {
               { signal, now: Date.now(), cycle, jobId: job.id, discovery: job.spec.discovery, onBatch: ingest,
                 onProgress: (progress) => { signal.throwIfAborted(); job.discoveryProgress = progress; this.persist(job); },
                 onOutcomes: (outcomes) => { signal.throwIfAborted(); job.discoveryOutcomes=outcomes; this.persist(job); },
-              }, job.spec.discovery ? 60000 : this.probeTimeoutMs);
+              }, job.spec.discovery ? job.spec.maxDurationMs-(job.spec.discovery.glances?22000:1000) : this.probeTimeoutMs);
             signal.throwIfAborted();
             if (observations.length) ingest(observations);
           } catch (error) {
@@ -210,6 +213,12 @@ export class JobManager {
         this.persist(job);
         if (cycle + 1 < job.spec.maxCycles) await delay(job.spec.intervalMs, undefined, { signal });
       }
+      if(job.spec.discovery?.glances&&this.enrichment){
+        signal.throwIfAborted();
+        const issues=await this.enrichment.run(job,signal,(state)=>{if(this.active!==active||job.status!=='running')return;job.glancesEnrichment=state;this.persist(job);});
+        completedWithIssues=completedWithIssues||issues;
+      }
+      signal.throwIfAborted();
       job.status = job.errors.length ? 'failed' : completedWithIssues ? 'completed_with_issues' : 'completed';
     } catch {
       job.status = active.reason ?? 'failed';

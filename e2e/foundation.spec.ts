@@ -16,26 +16,29 @@ const asset={id:'qa-asset',subjectKey:'qa-job/192.0.2.1',label:evidence.label,ki
 const job=(status='running')=>({id:'qa-job',synthetic:false,requestId:'qa-request',spec:{mode:'initial',scope:['discovery:ipv4'],exclusions:[],intervalMs:1000,maxCycles:1,maxDurationMs:60000,discovery:plan},
   status,createdAt:Date.now(),startedAt:Date.now(),finishedAt:null,completedTargets:0,totalTargets:1,cyclesCompleted:0,observationsAdded:1,errors:[],
   discoveryProgress:{addressesCompleted:1,totalAddresses:1,tcpCompleted:1,dnsCompleted:0,datagramsSent:0}});
-const snapshot=(assets:unknown[]=[],jobs:unknown[]=[])=>({runtime:'semantic-inventory-v3',synthetic:false,collectionError:null,assets,jobs,targets:[]});
+const snapshot=(assets:unknown[]=[],jobs:unknown[]=[])=>({runtime:'network-overview-v4',synthetic:false,collectionError:null,assets,jobs,targets:[]});
 const nav=(page:Page,name:string)=>page.getByRole('navigation').getByRole('button',{name,exact:true});
+async function openDiscovery(page:Page){await nav(page,'Settings').click();await page.getByRole('button',{name:'Configure discovery'}).click();await expect(page.getByRole('dialog')).toBeVisible();}
+async function closeDiscovery(page:Page){await page.getByRole('button',{name:'Close discovery',exact:true}).click();await expect(page.getByRole('dialog')).not.toBeVisible();}
 async function options(page:Page){await page.route('**/api/v1/discovery/options',(route)=>route.fulfill({json:{interfaces:[iface,other],defaults,limits:{}}}));}
-async function setup(page:Page){await options(page);await page.goto('/');await page.getByRole('combobox',{name:'Source interface'}).selectOption(iface.id);}
-async function tcp(page:Page,ports='443'){await page.getByRole('checkbox',{name:'TCP connect port probes',exact:true}).check();await page.getByRole('textbox',{name:'TCP ports, comma separated (maximum eight)'}).fill(ports);}
+async function setup(page:Page){await options(page);await page.goto('/');await openDiscovery(page);await page.getByRole('combobox',{name:'Source interface'}).selectOption(iface.id);}
+async function tcp(page:Page,ports='443'){await page.getByRole('checkbox',{name:'TCP connect port probes',exact:true}).check();await page.getByRole('textbox',{name:'TCP ports, comma separated (maximum 64)'}).fill(ports);}
 async function noOverflow(page:Page){expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);}
 async function screenshot(page:Page,info:TestInfo,name:string){const path=info.outputPath(name+'.png');await page.screenshot({path,fullPage:true});await info.attach(name,{path,contentType:'image/png'});}
 
 test('normal production opens real discovery with no demo controls or automatic job',async({page},info)=>{
   await options(page);await page.goto('/');
-  await expect(nav(page,'Discovery')).toHaveAttribute('aria-current','page');
+  await expect(nav(page,'NOC')).toHaveAttribute('aria-current','page');
+  await expect(page.getByRole('heading',{name:'Network operations centre'})).toBeVisible();await openDiscovery(page);
   await expect(page.getByRole('heading',{name:'Scoped IPv4 discovery'})).toBeVisible();
-  await expect(page.getByText('semantic-inventory-v3',{exact:true})).toBeVisible();
+  await expect(page.getByText('network-overview-v4',{exact:true})).toBeVisible();
   await expect(page.getByText(/Synthetic demo only|Demo storage|Collect initial fixtures|Live fixture updates/)).toHaveCount(0);
   await expect(page.getByRole('combobox',{name:'Source interface'})).toHaveValue('');
   for(const box of await page.getByRole('checkbox').all())await expect(box).not.toBeChecked();
   await expect(page.getByText('Choose a source interface.',{exact:true})).toBeVisible();
-  await nav(page,'Systems').click();await expect(page.getByRole('heading',{name:'No network observations yet'})).toBeVisible();
+  await closeDiscovery(page);await nav(page,'Systems').click();await expect(page.getByRole('heading',{name:'No network observations yet'})).toBeVisible();
   await nav(page,'Activity').click();await expect(page.locator('.job-list article')).toHaveCount(0);
-  await nav(page,'Discovery').click();await screenshot(page,info,'real-discovery-empty');await noOverflow(page);
+  await openDiscovery(page);await screenshot(page,info,'real-discovery-empty');await noOverflow(page);
 });
 
 test('interface selection prefills actual CIDR and supported DNS while preserving edits',async({page})=>{
@@ -54,15 +57,15 @@ test('interface selection prefills actual CIDR and supported DNS while preservin
 });
 
 test('full port list and target multiplication explain budget and invalid-token recovery',async({page},info)=>{
-  await setup(page);await tcp(page,'80,443,8080,8443,22');
+  await setup(page);await tcp(page,'80,443,8080,8443,22');await page.getByRole('combobox',{name:'Maximum TCP attempts',exact:true}).selectOption('1024');
   await expect(page.getByText(/253 targets × 5 unique ports = 1265 TCP attempts/)).toBeVisible();
   await expect(page.getByText(/Choose at most 4 ports for this scope/)).toBeVisible();
   await expect(page.getByRole('button',{name:'Preview discovery'})).toBeDisabled();
-  const ports=page.getByRole('textbox',{name:'TCP ports, comma separated (maximum eight)'});
+  const ports=page.getByRole('textbox',{name:'TCP ports, comma separated (maximum 64)'});
   await ports.fill('80,443,8080,8443');await expect(ports).toHaveValue('80,443,8080,8443');
   await expect(page.getByText(/253 targets × 4 unique ports = 1012 TCP attempts/)).toBeVisible();
   await expect(page.getByRole('button',{name:'Preview discovery'})).toBeEnabled();
-  await ports.fill('80,invalid');await expect(page.getByText(/TCP ports: enter 1–8 unique whole numbers/)).toBeVisible();
+  await ports.fill('80,invalid');await expect(page.getByText(/TCP ports: enter 1–64 unique whole numbers/)).toBeVisible();
   await ports.fill('443');await expect(page.getByRole('button',{name:'Preview discovery'})).toBeEnabled();
   await screenshot(page,info,'real-discovery-budget');await noOverflow(page);
 });
@@ -102,14 +105,14 @@ test('active discovery explains the form lock and cancellation preserves saved e
   let state=job();
   await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:snapshot([asset],[state])}));
   await page.route('**/api/v1/jobs/qa-job/cancel',(route)=>{state=job('cancelled');return route.fulfill({json:{job:state}});});
-  await options(page);await page.goto('/');await nav(page,'Discovery').click();
+  await options(page);await page.goto('/');await openDiscovery(page);
   await expect(page.getByText('A discovery job is active. Open Activity to review progress or cancel it.',{exact:true})).toBeVisible();
   await expect(page.getByRole('combobox',{name:'Source interface'})).toBeDisabled();
-  await page.getByRole('button',{name:'View activity'}).click();
-  await page.getByRole('button',{name:'Cancel collection'}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'View activity'}).click();
+  await page.locator('.job-list').getByRole('button',{name:'Cancel collection'}).click();
   await expect(page.locator('.badge.cancelled')).toHaveCount(1);
   await nav(page,'Systems').click();await expect(page.locator('.semantic-grid article')).toHaveCount(1);
-  await nav(page,'Discovery').click();await expect(page.getByRole('combobox',{name:'Source interface'})).toBeEnabled();
+  await openDiscovery(page);await expect(page.getByRole('combobox',{name:'Source interface'})).toBeEnabled();
 });
 
 test('method issues remain visible and API interruption retries without starting another scan',async({page},info)=>{
@@ -128,10 +131,10 @@ test('method issues remain visible and API interruption retries without starting
 
 test('navigation, keyboard and link-wide controls remain accessible without placeholder screens',async({page})=>{
   await options(page);await page.goto('/');
-  await page.keyboard.press('Tab');await expect(nav(page,'Discovery')).toBeFocused();
+  await page.keyboard.press('Tab');await expect(nav(page,'NOC')).toBeFocused();
   await page.keyboard.press('Tab');await page.keyboard.press('Enter');await expect(nav(page,'Systems')).toHaveAttribute('aria-current','page');
-  await expect(page.getByRole('navigation').getByRole('button')).toHaveCount(4);
-  await nav(page,'Discovery').click();await page.getByRole('combobox',{name:'Source interface'}).selectOption(iface.id);
+  await expect(page.getByRole('navigation').getByRole('button')).toHaveCount(6);
+  await openDiscovery(page);await page.getByRole('combobox',{name:'Source interface'}).selectOption(iface.id);
   await page.getByRole('checkbox',{name:'Legacy NetBIOS browse-master broadcast (limited coverage)',exact:true}).check();
   await expect(page.getByText('Approve link-wide transmission before previewing these methods.',{exact:true})).toBeVisible();
   await expect(page.getByRole('checkbox',{name:'I approve link-wide transmission on 192.0.2.0/24, including all hosts on that link.'})).not.toBeChecked();
@@ -149,7 +152,7 @@ test('friendly names, advertised services and responder defaults keep attempts s
       ptrNames:['dns-only.example'],ptrState:'answer',ports:[],mdns:[],ssdp:[],nbns:false}}};
   await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:snapshot([named,silent])}));
   await page.goto('/');
-  await expect(nav(page,'Systems')).toHaveAttribute('aria-current','page');
+  await expect(nav(page,'NOC')).toHaveAttribute('aria-current','page');
   await expect(page.getByRole('heading',{name:'monitor.example',exact:true})).toBeVisible();
   await expect(page.getByText('Glances · advertised',{exact:true})).toBeVisible();
   await expect(page.locator('.semantic-grid article')).toHaveCount(1);
@@ -194,7 +197,7 @@ test('Glances access is explicit, single-submit and renders genuine zero/partial
 test('an unavailable or mismatched API disables stats access from a cached selected system',async({page})=>{
   let mode='ready';
   await page.route('**/api/v1/snapshot',(route)=>mode==='offline'?route.abort('failed'):route.fulfill({json:{
-    ...snapshot([asset]),runtime:mode==='old'?'older-runtime':'semantic-inventory-v3'}}));
+    ...snapshot([asset]),runtime:mode==='old'?'older-runtime':'network-overview-v4'}}));
   await page.route('**/api/v1/assets/qa-asset',(route)=>route.fulfill({json:{asset,observations:[evidence]}}));
   await page.goto('/');await page.getByRole('button',{name:'Inspect system'}).click();
   await expect(page.getByRole('button',{name:'Review stats access'})).toBeEnabled();

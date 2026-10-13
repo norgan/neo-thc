@@ -1,5 +1,5 @@
 import { parentPort, workerData } from 'node:worker_threads';
-import { tcpProbe, ptrProbe, advertise, pool } from './discovery-network.mjs';
+import { tcpProbe, ptrProbe, advertise, pool, createPacer } from './discovery-network.mjs';
 import { validateWirePlan } from './discovery-result.mjs';
 const port = parentPort;
 if (!port) throw new Error('worker');
@@ -11,7 +11,7 @@ if (Object.keys(request).some((key) => !['v','attemptId','plan'].includes(key)) 
   process.execArgv.length || Object.keys(process.env).length) throw new Error('worker');
 const plan = validateWirePlan(request.plan);
 const controller = new AbortController();
-const timer = setTimeout(() => controller.abort(), 55000);
+const timer = setTimeout(() => controller.abort(), Math.max(1000,(plan.maxDurationMs??60000)-(plan.glances?23000:2000)));
 /** @param {Record<string,unknown>} message */
 const send = (message) => port.postMessage(JSON.stringify({ v:1, attemptId:request.attemptId, ...message }));
 const progress = { addressesCompleted:0, totalAddresses:plan.targets.length, tcpCompleted:0, dnsCompleted:0, datagramsSent:0 };
@@ -55,12 +55,14 @@ try {
     send({ type:'progress', progress:{...progress} });
   };
   for (const address of plan.targets) emit(address);
+  const pace=createPacer(controller.signal);
   await Promise.all([
-    pool(plan.targets.flatMap((address) => plan.ports.map((port) => ({address,port}))), 16, async ({address,port}) => {
+    pool(plan.targets.flatMap((address) => plan.ports.map((port) => ({address,port}))), plan.tcpConcurrency??16, async ({address,port}) => {
       if (controller.signal.aborted) return;
       const state = states.get(address);
       if (!state) return;
       const outcome=outcomes.get('tcp');if(!outcome)throw new Error('method');outcome.attempted++;
+      await pace();if(controller.signal.aborted)return;
       const result = await tcpProbe(address, port, plan.interface.address, controller.signal, undefined, (issue)=>{if(!outcome.issues.includes(issue))outcome.issues.push(issue);});
       outcome.completed++;outcome.responses+=Number(result==='open'||result==='closed');outcome.durationMs=Date.now()-startedAt;
       if (result === 'error' && !failures.includes('tcp_error')) failures.push('tcp_error');

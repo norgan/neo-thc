@@ -9,16 +9,19 @@ import type { DiscoveryInterface } from '../shared/types.js';
 import { readDnsDefaults } from './discovery-defaults.js';
 import { systemViews } from '../shared/inventory.js';
 import { GLANCES_PATHS, resolveGlancesTarget, readGlances, glancesRequest } from './glances.js';
+import {GlancesEnricher,createGlancesWorker} from './glances-enrichment.js';
 import { Store } from './store.js';
 
 const allowedHosts = new Set(['127.0.0.1:4318', 'localhost:4318', '127.0.0.1:5173', 'localhost:5173']);
 const allowedOrigins = new Set([...allowedHosts].map((host) => 'http://' + host));
 
-export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest } = {}) {
+export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker } = {}) {
   const store = new Store(options.dbPath, options.testSupport !== true);
   const discovery = options.discoveryAdapter ?? new DiscoveryCollector();
   const adapter = options.testSupport ? options.adapter ?? discovery : discovery;
-  const jobs = new JobManager(store, adapter, options.probeTimeoutMs, discovery);
+  const interfaces = options.discoveryInterfaces ?? localInterfaces;
+  const enrichment = new GlancesEnricher(store,interfaces,options.glancesWorkerFactory,options.glancesRead);
+  const jobs = new JobManager(store, adapter, options.probeTimeoutMs, discovery,enrichment);
   let statsActive: {requestId:string;controller:AbortController;done:Promise<unknown>}|null=null;
   let statsProblem:string|null=null;
   const collectionProblem=()=>jobs.problem??statsProblem;
@@ -48,9 +51,9 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'Not found' }));
 
   const isSynthetic = () => !store.jobs().some((job) => !!job.spec.discovery) && store.assets().every((asset) => asset.latest?.synthetic !== false);
-  app.get('/api/v1/health', async () => ({ status: collectionProblem() ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'semantic-inventory-v3', collector: 'explicit-scope-discovery', collectionError: collectionProblem() }));
+  app.get('/api/v1/health', async () => ({ status: collectionProblem() ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'network-overview-v4', collector: 'explicit-scope-discovery', collectionError: collectionProblem() }));
   app.get('/api/v1/snapshot', async () => ({
-    runtime: 'semantic-inventory-v3', synthetic: options.testSupport ? isSynthetic() : false,
+    runtime: 'network-overview-v4', synthetic: options.testSupport ? isSynthetic() : false,
     collectionError: collectionProblem(), assets: store.assets(), systems:systemViews(store.assets()), stats:store.stats(), statsActive:statsActive?.requestId??null, jobs: store.jobs(), targets: options.testSupport ? adapter.targets : [],
   }));
   app.get('/api/v1/assets', async () => ({ synthetic: options.testSupport ? isSynthetic() : false, assets: store.assets() }));
@@ -77,14 +80,13 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   app.post<{ Params: { id: string } }>('/api/v1/jobs/:id/cancel', async (request, reply) =>
     reply.code(202).send({ job: jobs.cancel(request.params.id) }));
 
-  const interfaces = options.discoveryInterfaces ?? localInterfaces;
   app.get('/api/v1/discovery/options', async () => {
     const current=interfaces();
     return {interfaces:current, defaults:await readDnsDefaults(current), limits:DISCOVERY_LIMITS};
   });
   app.post('/api/v1/discovery/preview', async (request) => {
     const { plan } = parseDiscovery(request.body, interfaces());
-    return { plan, maxDurationMs: 60000, warning: 'Network evidence does not establish device identity or health. Link-wide methods reach the entire selected interface subnet.' };
+    return { plan, maxDurationMs: plan.maxDurationMs??60000, warning: 'Network evidence does not establish device identity or health. Link-wide methods reach the entire selected interface subnet.' };
   });
   app.post('/api/v1/discovery/jobs', async (request, reply) => {
     if(statsActive||statsProblem)throw new RequestError(409,'A stats read is active or unavailable. Finish it before discovery.');

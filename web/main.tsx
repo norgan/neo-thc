@@ -6,8 +6,8 @@ import { SystemStats } from './SystemStats.js';
 import { Discovery } from './Discovery.js';
 import './style.css';
 
-type Tab='Discovery'|'Systems'|'System'|'Activity';
-const tabs:Tab[]=['Discovery','Systems','System','Activity'];
+type Tab='NOC'|'Systems'|'Network'|'System'|'Activity'|'Settings';
+const tabs:Tab[]=['NOC','Systems','Network','System','Activity','Settings'];
 const activeJob=(job:Job)=>job.status==='queued'||job.status==='running';
 const issueText:Record<string,string>={
   access_denied:'The operating system denied this method. Review local security/firewall policy; Neo did not change it.',
@@ -47,7 +47,7 @@ function Evidence({ observation }: { observation: Observation }) {
 
 
 function App() {
-  const [tab,setTab]=useState<Tab>('Discovery');
+  const [tab,setTab]=useState<Tab>('NOC');
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
   const [loadError,setLoadError]=useState('');
   const [actionError,setActionError]=useState('');
@@ -57,7 +57,12 @@ function App() {
   const [detailError,setDetailError]=useState('');
   const [refresh,setRefresh]=useState(0);
   const [showAttempts,setShowAttempts]=useState(false),[search,setSearch]=useState('');
-  const initialView=useRef(false);
+  const [discoveryOpen,setDiscoveryOpen]=useState(location.hash==='#discovery'),[consentRevision,setConsentRevision]=useState(0);
+  const dialog=useRef<HTMLDialogElement|null>(null),opener=useRef<HTMLElement|null>(null);
+  function openDiscovery(){opener.current=document.activeElement as HTMLElement;history.pushState({neoDiscovery:true},'','#discovery');setDiscoveryOpen(true);}
+  function closeDiscovery(){if(location.hash==='#discovery'&&history.state?.neoDiscovery)history.back();else{history.replaceState(null,'',location.pathname);setDiscoveryOpen(false);}}
+  useEffect(()=>{const changed=()=>setDiscoveryOpen(location.hash==='#discovery');window.addEventListener('popstate',changed);window.addEventListener('hashchange',changed);return()=>{window.removeEventListener('popstate',changed);window.removeEventListener('hashchange',changed);};},[]);
+  useEffect(()=>{const element=dialog.current;if(!element)return;if(discoveryOpen){if(!element.open)element.showModal();}else{if(element.open)element.close();setConsentRevision((value)=>value+1);opener.current?.focus();}},[discoveryOpen]);
   useEffect(()=>{
     const controller=new AbortController();
     let timer:ReturnType<typeof setTimeout>;
@@ -65,9 +70,8 @@ function App() {
       try {
         const next=await request<Snapshot>('/api/v1/snapshot',{signal:controller.signal});
         if(!controller.signal.aborted){
-          if(next.runtime!=='semantic-inventory-v3'){setLoadError('The API is an older build. Stop Neo, rebuild, restart the API and reload this page.');return;}
+          if(next.runtime!=='network-overview-v4'){setLoadError('The API is an older build. Stop Neo, rebuild, restart the API and reload this page.');return;}
           setSnapshot(next);setLoadError('');
-          if(!initialView.current){initialView.current=true;if(systemViews(next.assets).some((view)=>view.responded))setTab('Systems');}
         }
       } catch {if(!controller.signal.aborted)setLoadError('The local API is unavailable. Displayed information may be out of date. Start the API, then retry.');}
       finally {if(!controller.signal.aborted)timer=setTimeout(load,2000);}
@@ -105,18 +109,30 @@ function App() {
   return <div className="shell">
     <header className="masthead"><div><div className="eyebrow">THE HOMELAB COMPANION</div><h1>neo<span>THC</span></h1><p>Network Environment Overview</p></div>
       <div className="local-label"><span className="dot"/> Local network discovery<br/><strong>{snapshot?.runtime??'Connecting'}</strong></div></header>
-    <div className="notice">Choose your local interface and review the exact scope before starting. Nothing scans automatically. Network responses and advertisements do not establish device identity or service health.</div>
-    <nav aria-label="Main navigation">{tabs.map((item)=><button key={item} className={tab===item?'selected':''} aria-current={tab===item?'page':undefined} onClick={()=>{initialView.current=true;setTab(item);}}>{item}</button>)}</nav>
+
+    <nav aria-label="Main navigation">{tabs.map((item)=><button key={item} className={tab===item?'selected':''} aria-current={tab===item?'page':undefined} onClick={()=>setTab(item)}>{item}</button>)}</nav>
     <main><div aria-live="polite">
       {loadError&&<div className="error">{loadError} <button onClick={()=>setRefresh((value)=>value+1)}>Retry</button></div>}
       {actionError&&<div className="error">{actionError}</div>}
       {snapshot?.collectionError&&<div className="error">{snapshot.collectionError}</div>}
     </div>
-    {tab==='Discovery'&&<>
-      {running&&<p role="status">A discovery job is active. <button onClick={()=>setTab('Activity')}>View activity</button></p>}
-      <Discovery disabled={!!blockedReason} blockedReason={blockedReason} onStarted={()=>{setRefresh((value)=>value+1);setTab('Activity');}}/>
-    </>}
-    {tab==='Systems'&&<section><div className="section-title"><div><h2>Your systems</h2><p>{systems.filter((system)=>system.responded).length} address views with observed responses</p></div><button onClick={()=>setTab('Discovery')}>Discover systems</button></div>
+    {(running||snapshot?.statsActive)&&<div className="notice" role="status">Collection is active. You can keep using this overview. <button onClick={()=>setTab('Activity')}>View activity</button>{running&&<button disabled={busy} onClick={()=>void cancel(running)}>Cancel collection</button>}</div>}
+    {tab==='NOC'&&<section className="panel"><div className="section-title"><div><h2>Network operations centre</h2><p>Observed systems, service evidence, collection availability and reported capacity</p></div><button className="primary" onClick={openDiscovery}>Add or rescan systems</button></div>
+      <div className="metric-grid"><div><span>Systems with responses</span><strong>{systems.filter((system)=>system.responded).length}</strong></div>
+      <div><span>Advertised services</span><strong>{systems.reduce((sum,system)=>sum+system.services.filter((service)=>service.confidence==='advertised').length,0)}</strong></div>
+      <div><span>Systems with metrics</span><strong>{systems.filter((system)=>snapshot?.stats?.some((stats)=>stats.assetId===system.currentAssetId&&(stats.cpuPercent!==null||stats.memory!==null))).length}</strong></div></div>
+      {systems.flatMap((system)=>{const stats=snapshot?.stats?.find((item)=>item.assetId===system.currentAssetId);return (stats?.filesystems??[]).filter((mount)=>mount.percent>=90).map((mount)=><p className="caution" key={system.key+mount.mount}><strong>{system.displayName} · {mount.mount}: {mount.percent.toFixed(1)}% used</strong> · reported filesystem capacity needs attention. Snapshot {stats?time(stats.sampledAt):''}{stats&&Date.now()-stats.sampledAt>60000?' (older snapshot; refresh to confirm)':''}. <button onClick={()=>choose(system)}>Inspect capacity</button></p>);})}
+      {!systems.length&&<p>No systems have been added yet. Add systems to review a scope and discover your network.</p>}
+    </section>}
+    {tab==='Network'&&<section><div className="section-title"><div><h2>Network</h2><p>Observed collection scopes and delivered-service evidence</p></div><button onClick={openDiscovery}>Add or rescan systems</button></div>
+      <section className="panel"><h3>Interfaces and scanned scopes</h3>{!jobs.length?<p>No approved network scopes have been scanned yet.</p>:<ul>{[...new Map(jobs.map((job)=>[job.spec.discovery!.interface.address+'|'+job.spec.discovery!.cidr,job])).values()].map((job)=><li key={job.id}><strong>{job.spec.discovery!.interface.name} · {job.spec.discovery!.cidr}</strong><p>Collector source {job.spec.discovery!.interface.address} · {job.spec.discovery!.methods.join(', ')} · {job.status.replaceAll('_',' ')} · {time(job.createdAt)}</p></li>)}</ul>}</section>
+      <section className="panel"><h3>Network infrastructure</h3><p>Router, switch, access-point and link identities are not established by these discovery probes. No topology or dependency is inferred from an address or an open web port.</p>
+        <h4>Unclassified responding endpoints</h4>{systems.filter((system)=>system.responded).length?<ul>{systems.filter((system)=>system.responded).map((system)=><li key={system.key}><button onClick={()=>choose(system)}>{system.displayName}</button> · {system.address} · infrastructure/compute classification unknown</li>)}</ul>:<p>No responding endpoints recorded.</p>}</section>
+      <section className="panel"><h3>Delivered services</h3><p>Services are listed separately from infrastructure. Advertisements and port hints may describe the same multi-role system; they do not establish dependency links.</p>
+        {systems.some((system)=>system.services.length)?<ul>{systems.flatMap((system)=>system.services.map((service)=><li key={system.key+service.key}><strong>{service.name}</strong> · {system.displayName} · {service.confidence==='advertised'?'advertised':'port hint'} · observed {time(service.observedAt)}<p className="muted">{service.evidence}</p></li>))}</ul>:<p>No service evidence recorded yet.</p>}</section>
+    </section>}
+    {tab==='Settings'&&<section className="panel"><h2>Settings</h2><h3>Network discovery</h3><p>Choose a local interface, scan scope, common-port profile and optional existing Glances reads. Nothing starts until you review and approve a new job.</p><button onClick={openDiscovery}>Configure discovery</button><h3>Local runtime</h3><p>{snapshot?.runtime??'Connecting'} · localhost-only UI and local storage. Discovery remains a one-off action; stats snapshots do not refresh automatically.</p></section>}
+    {(tab==='Systems'||tab==='NOC')&&<section><div className="section-title"><div><h2>Your systems</h2><p>{systems.filter((system)=>system.responded).length} address views with observed responses</p></div><button onClick={openDiscovery}>Discover systems</button></div>
       <label className="field">Find a name, service or role<input value={search} onChange={(event)=>setSearch(event.target.value)} placeholder="Glances, file sharing, web…"/></label>
       <label className="check"><input type="checkbox" checked={showAttempts} onChange={(event)=>setShowAttempts(event.target.checked)}/>Show all address attempts, including unanswered ones ({systems.length})</label>
       {!systems.length&&<div className="panel"><h3>No network observations yet</h3><p>Discover your network to find observed hostnames, services and likely roles.</p><button onClick={()=>setTab('Discovery')}>Set up discovery</button></div>}
@@ -169,13 +185,24 @@ function App() {
         {job.status==='completed_with_issues'&&<p className="caution">Collection completed with method issues. Saved evidence is available; coverage is partial.</p>}
         {job.discoveryOutcomes&&<ul>{job.discoveryOutcomes.map((outcome)=><li key={outcome.method}><strong>{outcome.method.toUpperCase()}</strong>: {outcome.completed}/{outcome.attempted} operations finished, {outcome.responses} responses, {outcome.durationMs} ms.
           {outcome.issues.length?outcome.issues.map((issue)=><p className="caution" key={issue}>{issueText[issue]}</p>):<span> No method errors reported; silence does not prove absence.</span>}</li>)}</ul>}
+        {job.glancesEnrichment&&<section><h4>Existing Glances enrichment · {job.glancesEnrichment.phase}</h4>
+          <p>{job.glancesEnrichment.datagramsSent}/7 mDNS queries · {job.glancesEnrichment.endpoints.length}/2 selected instances · {job.glancesEnrichment.omitted} further instances not read (endpoint cap)</p>
+          {job.glancesEnrichment.issues.map((issue)=><p className="caution" key={issue}>{issue.replaceAll('_',' ')}</p>)}
+          <ul>{job.glancesEnrichment.endpoints.map((endpoint)=><li key={endpoint.address+endpoint.instance}><strong>{endpoint.instance}</strong> · {endpoint.address}{endpoint.port?':'+endpoint.port:''} · {endpoint.protocol} · {endpoint.status}{endpoint.reason?' · '+endpoint.reason.replaceAll('_',' '):''}</li>)}</ul>
+        </section>}
         {job.status==='failed'&&!job.discoveryOutcomes&&<p className="caution">This older run did not retain per-method diagnostics. Its saved observations remain available; the exact failed method cannot be recovered.</p>}
         {job.errors.map((error,index)=><p className="caution" key={index}>{error}</p>)}
         {activeJob(job)&&<button disabled={busy} onClick={()=>void cancel(job)}>Cancel collection</button>}
         {['cancelled','timed_out','interrupted'].includes(job.status)&&<p>Partial evidence is retained. Start a new job when ready.</p>}
       </article>)}</div>
     </section>}
-    </main><footer>Neo · Network Environment Overview <span>THC · The Homelab Companion</span></footer>
+    </main>
+    <dialog ref={dialog} className="discovery-dialog" aria-labelledby="discovery-dialog-title" onCancel={(event)=>{event.preventDefault();closeDiscovery();}} onClick={(event)=>{if(event.target!==event.currentTarget)return;const bounds=event.currentTarget.getBoundingClientRect();if(event.clientX<bounds.left||event.clientX>bounds.right||event.clientY<bounds.top||event.clientY>bounds.bottom)closeDiscovery();}}>
+      <div className="section-title"><h2 id="discovery-dialog-title">Add or rescan systems</h2><button autoFocus onClick={closeDiscovery}>Close discovery</button></div>
+      <p>Closing this dialog preserves your edits and any running job. Approval must be reviewed again after reopening.</p>
+      {running&&<p role="status">A discovery job is active. <button onClick={()=>{closeDiscovery();setTab('Activity');}}>View activity</button></p>}
+      <Discovery disabled={!!blockedReason} blockedReason={blockedReason} resetConsentKey={consentRevision} onStarted={()=>{setRefresh((value)=>value+1);closeDiscovery();setTab('Activity');}}/>
+    </dialog><footer>Neo · Network Environment Overview <span>THC · The Homelab Companion</span></footer>
   </div>;
 }
 createRoot(document.getElementById('root')!).render(<StrictMode><App/></StrictMode>);

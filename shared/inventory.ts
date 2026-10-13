@@ -1,3 +1,4 @@
+import {portHint} from './ports.js';
 import type { Asset, KnownService, NetworkFacts, Observation, SystemView } from './types.js';
 const catalogue:Record<string,[string,string,string]> = {
   '_glances._tcp.local':['Glances','System monitoring','Monitoring endpoint'],
@@ -22,7 +23,7 @@ export function networkFacts(observation:Observation):NetworkFacts|null {
   if(observation.network){
     const value=observation.network;
     if(typeof value.address!=='string'||!Array.isArray(value.ptrNames)||value.ptrNames.length>4||value.ptrNames.some((name)=>!safeName(name))||
-      !Array.isArray(value.ports)||value.ports.length>8||value.ports.some((port)=>!Number.isInteger(port.port)||port.port<1||port.port>65535||!['open','closed','timeout','unreachable','error'].includes(port.state))||
+      !Array.isArray(value.ports)||value.ports.length>64||value.ports.some((port)=>!Number.isInteger(port.port)||port.port<1||port.port>65535||!['open','closed','timeout','unreachable','error'].includes(port.state))||
       !Array.isArray(value.mdns)||value.mdns.length>4||value.mdns.some((name)=>typeof name!=='string'||!/^_[a-z0-9_-]+\._(?:tcp|udp)\.local$/.test(name))||
       !Array.isArray(value.ssdp)||value.ssdp.length>1||typeof value.nbns!=='boolean')return null;
     return value;
@@ -63,8 +64,8 @@ export function systemViews(assets:Asset[]):SystemView[] {
         confidence:'advertised',evidence:'mDNS service-type advertisement: '+advertised,observedAt:row.observation.observedAt});
     }
     const openPorts=current.facts.ports.filter((port)=>port.state==='open').map((port)=>port.port).sort((a,b)=>a-b);
-    for(const port of openPorts)services.push({key:'tcp/'+port,name:'TCP '+port+' accepts connections',category:portHints[port]?.[0]??'Reachable TCP endpoint',
-      confidence:'port-hint',evidence:portHints[port]?.[1]??'Protocol and application are not identified',observedAt:current.observation.observedAt,port});
+    for(const port of openPorts)services.push({key:'tcp/'+port,name:'TCP '+port+' accepts connections',category:portHints[port]?.[0]??portHint(port)+' candidate',
+      confidence:'port-hint',evidence:portHints[port]?.[1]??portHint(port)+' commonly uses this port; protocol and application are not verified',observedAt:current.observation.observedAt,port});
     const roles:SystemView['roles']=[];
     for(const service of services) {
       const label=service.confidence==='advertised'?catalogue[service.key]?.[2]:service.port?portHints[service.port]?.[0]:undefined;

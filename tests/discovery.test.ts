@@ -44,7 +44,7 @@ test('scope accepts an explicit on-link /24 while bounding ports and excluding r
   assert.equal(p.targets.length,253);assert.equal(p.tcpBudget,506);
   assert.ok(!p.targets.includes(iface.address)&&!p.targets.includes('192.0.2.0')&&!p.targets.includes('192.0.2.255'));
   assert.deepEqual(cidrRange('192.0.2.25/28'),{first:3221226000,last:3221226015,prefix:28,size:16,cidr:'192.0.2.16/28'});
-  for(const extra of [{cidr:'192.0.0.0/16'},{cidr:'198.51.100.0/24'},{cidr:'192.0.2.0/24',ports:[1,2,3,4,5]},
+  for(const extra of [{cidr:'192.0.0.0/16'},{cidr:'198.51.100.0/24'},{cidr:'192.0.2.0/24',ports:[1,2,3,4,5],tcpAttemptLimit:1024},
     {interfaceId:'stale'},{ports:[80,80]},{ports:[0]},{url:'http://example.com'},{methods:[]},{methods:['icmp']},
     {methods:['ptr'],ports:[],resolver:'8.8.8.8'},{methods:['ptr'],ports:[]},{cidr:'::1/128'}]) {
     assert.throws(()=>parseDiscovery(settings(extra),[iface]));
@@ -339,7 +339,7 @@ test('real runtime rejects fixture routes and excludes synthetic history before 
   const {app,store,jobs}=createRealApp({dbPath:path,discoveryInterfaces:()=>[iface]});
   try {
     const snapshot=(await app.inject({url:'/api/v1/snapshot',headers})).json();
-    assert.equal(snapshot.runtime,'semantic-inventory-v3');assert.equal(snapshot.assets.length,1);assert.equal(snapshot.jobs.length,0);
+    assert.equal(snapshot.runtime,'network-overview-v4');assert.equal(snapshot.assets.length,1);assert.equal(snapshot.jobs.length,0);
     assert.deepEqual(snapshot.assets[0].identityWarnings,[]);assert.equal(store.observationCount(),1);
     assert.equal((await app.inject({url:'/api/v1/assets/'+hiddenId,headers})).statusCode,404);
     assert.equal((await app.inject({url:'/api/v1/jobs/old-0',headers})).statusCode,404);
@@ -372,7 +372,7 @@ test('system defaults are interface-specific, bounded, single-flight and never g
 test('form explains target-by-port budget and rejects invalid tokens without silent widening',()=>{
   const value=formBudget(iface,iface.cidr,['tcp'],'80,443,8080,8443');
   assert.equal(value.targets,253);assert.equal(value.attempts,1012);assert.deepEqual(value.errors,[]);
-  const tooMany=formBudget(iface,iface.cidr,['tcp'],'80,443,8080,8443,22');
+  const tooMany=formBudget(iface,iface.cidr,['tcp'],'80,443,8080,8443,22',1024);
   assert.equal(tooMany.attempts,1265);assert.equal(tooMany.maxPorts,4);assert.match(tooMany.errors.join(' '),/at most 4 ports/);
   assert.ok(formBudget(iface,iface.cidr,['tcp'],'80,invalid').errors.length);
   assert.equal(formBudget(iface,iface.cidr,['mdns'],'invalid').attempts,0);
