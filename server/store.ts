@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import type { Asset, Job, Observation, ObservationInput } from '../shared/types.js';
+import type { Asset, Job, Observation, ObservationInput, GlancesStats } from '../shared/types.js';
 
 export const MAX_OBSERVATIONS = 10_000;
 export const MAX_JOBS = 200;
@@ -16,7 +16,7 @@ export class Store {
     this.db = new DatabaseSync(path, { timeout: 1_000 });
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
     const version = this.db.prepare('PRAGMA user_version').get() as { user_version: number };
-    if (version.user_version > 1) {
+    if (version.user_version > 2) {
       this.db.close();
       throw new Error('Database schema is newer than this application');
     }
@@ -28,7 +28,8 @@ export class Store {
       'CREATE INDEX IF NOT EXISTS observations_asset_time ON observations(asset_id, observed_at DESC);' +
       'CREATE TABLE IF NOT EXISTS jobs (' +
       'id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, payload TEXT NOT NULL);' +
-      'PRAGMA user_version = 1;'
+      'CREATE TABLE IF NOT EXISTS stats_snapshots (id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, asset_id TEXT NOT NULL REFERENCES assets(id), sampled_at INTEGER NOT NULL, payload TEXT NOT NULL);' +
+      'PRAGMA user_version = 2;'
     );
   }
 
@@ -152,6 +153,22 @@ export class Store {
       'INSERT INTO jobs (id, request_id, created_at, payload) VALUES (?, ?, ?, ?) ' +
       'ON CONFLICT(id) DO UPDATE SET payload = excluded.payload'
     ).run(job.id, job.requestId, job.createdAt, JSON.stringify(job));
+  }
+
+  stats(): GlancesStats[] {
+    const rows=this.db.prepare('SELECT payload FROM stats_snapshots ORDER BY sampled_at DESC, rowid DESC LIMIT 500').all() as {payload:string}[];
+    const visible=new Set(this.assets().map((asset)=>asset.id));
+    return rows.map((row)=>JSON.parse(row.payload) as GlancesStats).filter((row)=>visible.has(row.assetId));
+  }
+  statsByRequest(requestId:string):GlancesStats|undefined {
+    return this.stats().find((row)=>row.requestId===requestId);
+  }
+  saveStats(snapshot:GlancesStats):void {
+    if(!this.assets().some((asset)=>asset.id===snapshot.assetId))throw new Error('Unknown stats target');
+    const count=this.db.prepare('SELECT COUNT(*) AS count FROM stats_snapshots').get() as {count:number};
+    if(count.count>=500)throw new Error('Stats history capacity reached');
+    this.db.prepare('INSERT INTO stats_snapshots (id,request_id,asset_id,sampled_at,payload) VALUES (?,?,?,?,?)')
+      .run(snapshot.id,snapshot.requestId,snapshot.assetId,snapshot.sampledAt,JSON.stringify(snapshot));
   }
 
   close(): void { this.db.close(); }

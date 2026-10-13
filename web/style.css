@@ -9,3 +9,5 @@ select { width: 100%; max-width: 100%; padding: .7rem; border: 1px solid var(--l
 
 textarea:focus-visible,select:focus-visible{outline:3px solid #497cc9;outline-offset:3px}
 .badge.completed_with_issues{background:#f6f0d9;color:#625322}
+
+.metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin:1.5rem 0}.metric-grid>div{padding:1rem;background:#edf4ed;border-radius:.7rem}.metric-grid strong,.metric-grid span,.metric-grid small{display:block}.metric-grid strong{font-size:1.8rem;overflow-wrap:anywhere}.filesystem-list{list-style:none;padding:0}.filesystem-list li{margin-bottom:1rem}.service-list{display:flex;flex-wrap:wrap;gap:.4rem;list-style:none;padding:0}.service-list li{padding:.35rem .6rem;background:#edf4ed;border-radius:.4rem}.system-subtitle{font-size:.8rem;color:#526b61}.semantic-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}.semantic-grid h3{font-size:1.35rem;overflow-wrap:anywhere}@media(max-width:650px){.metric-grid{grid-template-columns:1fr}.semantic-grid{grid-template-columns:1fr}}

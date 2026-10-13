@@ -63,3 +63,12 @@ The real-only correction at 7002b4a passed 50 unit tests, 16 desktop/mobile Chro
 Agentless first. An optional endpoint agent is only for capabilities unavailable agentlessly. Colocated UI/collector is implemented; an on-premises collector with remotely hosted interface is planned. Remote UI does not decide API/storage/control-plane location or authorize uploading inventory. Local secrets, authenticated encrypted pairing, scope enforcement, revocation and offline delivery require design/security review. See [deployment modes](docs/deployment-modes.md) and [requirements](docs/requirements.md).
 
 Real Proxmox and other credentialed platform adapters, dependency graphs, advanced DNS diagnostics, recommendations and remote deployment remain planned. No merge or deployment is implied.
+
+
+## Systems and real stats (semantic-inventory-v3)
+
+Systems opens automatically when saved responders exist. Friendly PTR names, advertised services and evidence-supported role suggestions lead the view. Search names/services/roles; enable “Show all address attempts” for silent or DNS-only candidates. Address/interface grouping is presentation only: original job-scoped identities, observations and past names stay separate. Only the newest address observation supplies current name and service suggestions.
+
+Choose **Inspect system → Connect system stats** for a real, one-shot Glances REST API v4 read. Review the exact IP, scheme, port and six fixed GET paths, then approve it. CPU, memory, uptime and per-mount filesystem capacity are reported values with timestamps and partial errors. The default port 61208 is a suggestion, not a discovered port. Authentication-required endpoints stop without credential attempts. No integration installation, recurring polling or credential setup is performed. See [Glances scope and setup](docs/glances.md).
+
+This update adds SQLite schema v2 with a stats-history table; existing discovery and quarantined legacy data are retained. Back up the SQLite database while Neo is stopped before updating. Older schema-v1 binaries cannot open a v2 database; do not roll back the binary against the upgraded database. No data wipe is needed.

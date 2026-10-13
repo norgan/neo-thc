@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { Worker } from 'node:worker_threads';
 import { createServer } from 'node:net';
+import {createServer as createHttpServer} from 'node:http';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, access } from 'node:fs/promises';
@@ -84,6 +85,17 @@ try {
     });
   } finally {await worker.terminate();await new Promise((resolve)=>listener.close(resolve));}
   assert.equal(batches.length,1);assert.equal(batches[0].ports[0].state,'open');
+  // Actual compiled read-only HTTP transport, isolated loopback endpoint and synthetic payload only.
+  const {readGlances,GLANCES_PATHS}=await import('../dist/server/server/glances.js');
+  const paths=[];
+  const metrics={'/api/4/version':'4.5.8','/api/4/system':{hostname:'ci.example',os_name:'Test OS'},
+    '/api/4/cpu':{total:0},'/api/4/mem':{percent:25,total:1024,available:768},'/api/4/fs':[],'/api/4/uptime':'1 hour'};
+  const statsServer=createHttpServer((request,response)=>{paths.push(request.url);response.setHeader('Content-Type','application/json');response.end(JSON.stringify(metrics[request.url]));});
+  await new Promise((resolve)=>statsServer.listen(0,'127.0.0.1',resolve));
+  try {
+    const stats=await readGlances({assetId:'compiled-smoke',requestId:'compiled-stats-smoke',address:'127.0.0.1',sourceAddress:'127.0.0.1',scheme:'http',port:statsServer.address().port},controller.signal);
+    assert.equal(stats.status,'complete');assert.equal(stats.cpuPercent,0);assert.deepEqual(stats.filesystems,[]);assert.deepEqual(paths,[...GLANCES_PATHS]);
+  } finally {statsServer.closeAllConnections();await new Promise((resolve)=>statsServer.close(resolve));}
   const {Store}=await import('../dist/server/server/store.js');
   const {discoveryObservation}=await import('../dist/server/server/discovery-runner.js');
   const evidence=discoveryObservation(batches[0],loopbackPlan,'actual-loopback-smoke');
@@ -106,7 +118,7 @@ try {
     try {
       const response = await api('/api/v1/health');
       const health = await response.json();
-      return health.status === 'ok' && health.synthetic === false && health.runtime === 'real-discovery-v2';
+      return health.status === 'ok' && health.synthetic === false && health.runtime === 'semantic-inventory-v3';
     } catch { return false; }
   }, 10_000, 'Compiled server never became ready');
 
@@ -131,11 +143,12 @@ try {
   assert.deepEqual(inventory.assets[0].identityWarnings,[]);
   assert.equal(inventory.assets[0].latest.services[0].note.includes('open'),true);
   const snapshot=await (await api('/api/v1/snapshot')).json();
-  assert.equal(snapshot.runtime,'real-discovery-v2');assert.deepEqual(snapshot.targets,[]);
+  assert.equal(snapshot.systems.length,1);assert.equal(snapshot.systems[0].responded,true);
+  assert.equal(snapshot.runtime,'semantic-inventory-v3');assert.deepEqual(snapshot.targets,[]);
   const removed=await fetch(base+'/api/v1/jobs',{method:'POST',headers:{'Content-Type':'application/json','X-Neo-Client':'local-ui'},
     body:JSON.stringify({requestId:'no-runtime-fixture',mode:'initial',scope:['fixture:nas']}),signal:AbortSignal.timeout(1000)});
   assert.equal(removed.status,404);
-  console.log('PASS: real-only npm start, loopback health/assets, legacy sample quarantine and actual compiled discovery worker TCP socket');
+  console.log('PASS: real-only npm start, loopback health/assets, legacy sample quarantine and actual compiled discovery worker TCP socket and fixed-path Glances HTTP stats');
 
 } catch (error) {
   failed = true;

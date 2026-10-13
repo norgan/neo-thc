@@ -16,7 +16,7 @@ const asset={id:'qa-asset',subjectKey:'qa-job/192.0.2.1',label:evidence.label,ki
 const job=(status='running')=>({id:'qa-job',synthetic:false,requestId:'qa-request',spec:{mode:'initial',scope:['discovery:ipv4'],exclusions:[],intervalMs:1000,maxCycles:1,maxDurationMs:60000,discovery:plan},
   status,createdAt:Date.now(),startedAt:Date.now(),finishedAt:null,completedTargets:0,totalTargets:1,cyclesCompleted:0,observationsAdded:1,errors:[],
   discoveryProgress:{addressesCompleted:1,totalAddresses:1,tcpCompleted:1,dnsCompleted:0,datagramsSent:0}});
-const snapshot=(assets:unknown[]=[],jobs:unknown[]=[])=>({runtime:'real-discovery-v2',synthetic:false,collectionError:null,assets,jobs,targets:[]});
+const snapshot=(assets:unknown[]=[],jobs:unknown[]=[])=>({runtime:'semantic-inventory-v3',synthetic:false,collectionError:null,assets,jobs,targets:[]});
 const nav=(page:Page,name:string)=>page.getByRole('navigation').getByRole('button',{name,exact:true});
 async function options(page:Page){await page.route('**/api/v1/discovery/options',(route)=>route.fulfill({json:{interfaces:[iface,other],defaults,limits:{}}}));}
 async function setup(page:Page){await options(page);await page.goto('/');await page.getByRole('combobox',{name:'Source interface'}).selectOption(iface.id);}
@@ -28,12 +28,12 @@ test('normal production opens real discovery with no demo controls or automatic 
   await options(page);await page.goto('/');
   await expect(nav(page,'Discovery')).toHaveAttribute('aria-current','page');
   await expect(page.getByRole('heading',{name:'Scoped IPv4 discovery'})).toBeVisible();
-  await expect(page.getByText('real-discovery-v2',{exact:true})).toBeVisible();
+  await expect(page.getByText('semantic-inventory-v3',{exact:true})).toBeVisible();
   await expect(page.getByText(/Synthetic demo only|Demo storage|Collect initial fixtures|Live fixture updates/)).toHaveCount(0);
   await expect(page.getByRole('combobox',{name:'Source interface'})).toHaveValue('');
   for(const box of await page.getByRole('checkbox').all())await expect(box).not.toBeChecked();
   await expect(page.getByText('Choose a source interface.',{exact:true})).toBeVisible();
-  await nav(page,'Inventory').click();await expect(page.getByRole('heading',{name:'No network observations yet'})).toBeVisible();
+  await nav(page,'Systems').click();await expect(page.getByRole('heading',{name:'No network observations yet'})).toBeVisible();
   await nav(page,'Activity').click();await expect(page.locator('.job-list article')).toHaveCount(0);
   await nav(page,'Discovery').click();await screenshot(page,info,'real-discovery-empty');await noOverflow(page);
 });
@@ -87,14 +87,14 @@ test('network inventory and evidence exclude synthetic records even in a mixed A
   let stale=false;
   await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:snapshot([{...asset,freshness:stale?'stale':'fresh'},{...asset,id:'hidden',label:'Hidden sample',latest:{...evidence,synthetic:true,source:'fixture-v1'}}])}));
   await page.route('**/api/v1/assets/qa-asset',(route)=>route.fulfill({json:{asset,observations:[evidence,{...evidence,id:'hidden-history',synthetic:true}]}}));
-  await page.goto('/');await nav(page,'Inventory').click();
-  await expect(page.locator('.asset-grid article')).toHaveCount(1);await expect(page.getByText('Hidden sample')).toHaveCount(0);
+  await page.goto('/');await nav(page,'Systems').click();
+  await expect(page.locator('.semantic-grid article')).toHaveCount(1);await expect(page.getByText('Hidden sample')).toHaveCount(0);
   await page.getByRole('button',{name:'Inspect system'}).click();
+  await page.getByText('Technical evidence and scan history',{exact:true}).click();
   await expect(page.getByText('Network evidence',{exact:true}).first()).toBeVisible();
   await expect(page.getByText('discovery-v1',{exact:true}).first()).toBeVisible();
   await expect(page.getByText('TCP 443',{exact:true}).first()).toBeVisible();
-  await expect(page.locator('details')).toHaveCount(1);
-  stale=true;await expect(page.locator('.columns > section').first().locator('.badge.stale')).toHaveCount(1,{timeout:6000});
+  stale=true;await expect(page.locator('.badge.stale')).toHaveCount(1,{timeout:6000});
   await screenshot(page,info,'real-evidence');await noOverflow(page);
 });
 
@@ -102,13 +102,13 @@ test('active discovery explains the form lock and cancellation preserves saved e
   let state=job();
   await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:snapshot([asset],[state])}));
   await page.route('**/api/v1/jobs/qa-job/cancel',(route)=>{state=job('cancelled');return route.fulfill({json:{job:state}});});
-  await options(page);await page.goto('/');
+  await options(page);await page.goto('/');await nav(page,'Discovery').click();
   await expect(page.getByText('A discovery job is active. Open Activity to review progress or cancel it.',{exact:true})).toBeVisible();
   await expect(page.getByRole('combobox',{name:'Source interface'})).toBeDisabled();
   await page.getByRole('button',{name:'View activity'}).click();
   await page.getByRole('button',{name:'Cancel collection'}).click();
   await expect(page.locator('.badge.cancelled')).toHaveCount(1);
-  await nav(page,'Inventory').click();await expect(page.locator('.asset-grid article')).toHaveCount(1);
+  await nav(page,'Systems').click();await expect(page.locator('.semantic-grid article')).toHaveCount(1);
   await nav(page,'Discovery').click();await expect(page.getByRole('combobox',{name:'Source interface'})).toBeEnabled();
 });
 
@@ -129,7 +129,7 @@ test('method issues remain visible and API interruption retries without starting
 test('navigation, keyboard and link-wide controls remain accessible without placeholder screens',async({page})=>{
   await options(page);await page.goto('/');
   await page.keyboard.press('Tab');await expect(nav(page,'Discovery')).toBeFocused();
-  await page.keyboard.press('Tab');await page.keyboard.press('Enter');await expect(nav(page,'Inventory')).toHaveAttribute('aria-current','page');
+  await page.keyboard.press('Tab');await page.keyboard.press('Enter');await expect(nav(page,'Systems')).toHaveAttribute('aria-current','page');
   await expect(page.getByRole('navigation').getByRole('button')).toHaveCount(4);
   await nav(page,'Discovery').click();await page.getByRole('combobox',{name:'Source interface'}).selectOption(iface.id);
   await page.getByRole('checkbox',{name:'Legacy NetBIOS browse-master broadcast (limited coverage)',exact:true}).check();
@@ -138,4 +138,55 @@ test('navigation, keyboard and link-wide controls remain accessible without plac
   await expect(page.getByRole('checkbox',{name:'mDNS service-type multicast (not full service discovery)',exact:true})).not.toBeChecked();
   await expect(page.getByRole('checkbox',{name:'SSDP root-device multicast (no URL fetching)',exact:true})).not.toBeChecked();
   await noOverflow(page);
+});
+
+
+test('friendly names, advertised services and responder defaults keep attempts secondary',async({page},info)=>{
+  const named={...asset,latest:{...evidence,network:{address:'192.0.2.1',ptrNames:['monitor.example'],ptrState:'answer',
+    ports:[{port:443,state:'open'}],mdns:['_glances._tcp.local'],ssdp:[],nbns:false}}};
+  const silent={...asset,id:'silent-asset',latest:{...evidence,id:'silent-observation',assetId:'silent-asset',
+    subjectKey:'qa-job/192.0.2.2',identifiers:[{kind:'ip',value:'192.0.2.2'}],services:[],network:{address:'192.0.2.2',
+      ptrNames:['dns-only.example'],ptrState:'answer',ports:[],mdns:[],ssdp:[],nbns:false}}};
+  await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:snapshot([named,silent])}));
+  await page.goto('/');
+  await expect(nav(page,'Systems')).toHaveAttribute('aria-current','page');
+  await expect(page.getByRole('heading',{name:'monitor.example',exact:true})).toBeVisible();
+  await expect(page.getByText('Glances · advertised',{exact:true})).toBeVisible();
+  await expect(page.locator('.semantic-grid article')).toHaveCount(1);
+  await page.getByRole('checkbox',{name:/Show all address attempts/}).check();
+  await expect(page.locator('.semantic-grid article')).toHaveCount(2);
+  await page.getByRole('textbox',{name:'Find a name, service or role'}).fill('glances');
+  await expect(page.locator('.semantic-grid article')).toHaveCount(1);
+  await screenshot(page,info,'friendly-systems');await noOverflow(page);
+});
+
+test('Glances access is explicit, single-submit and renders genuine zero/partial filesystem metrics',async({page},info)=>{
+  let reads=0;
+  const records:unknown[]=[];
+  await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:{...snapshot([asset]),stats:records}}));
+  await page.route('**/api/v1/assets/qa-asset',(route)=>route.fulfill({json:{asset,observations:[evidence]}}));
+  await page.route('**/api/v1/assets/qa-asset/glances/preview',(route)=>route.fulfill({json:{
+    endpoint:'http://192.0.2.1:61208',sourceAddress:iface.address,paths:['/api/4/version','/api/4/system','/api/4/cpu','/api/4/mem','/api/4/fs','/api/4/uptime']}}));
+  await page.route('**/api/v1/assets/qa-asset/glances/read',async(route)=>{
+    reads++;expect(route.request().postDataJSON().confirmed).toBe(true);
+    await new Promise((resolve)=>setTimeout(resolve,100));
+    const result={id:'stats-one',requestId:'stats-request',assetId:'qa-asset',source:'glances-api-v4',
+      endpoint:'http://192.0.2.1:61208',sourceAddress:iface.address,sampledAt:Date.now(),version:'4.5.8',status:'partial',
+      hostname:'reported.example',operatingSystem:'Example OS',cpuPercent:0,memory:{percent:25,totalBytes:1073741824,availableBytes:805306368},
+      filesystems:[{mount:'/',type:'examplefs',sizeBytes:1073741824,usedBytes:268435456,freeBytes:734003200,percent:25}],
+      uptime:null,issues:[{section:'uptime',code:'not_found'}]};
+    records.unshift(result);await route.fulfill({json:{snapshot:result}});
+  });
+  await page.goto('/');await page.getByRole('button',{name:'Inspect system'}).click();
+  await expect(page.getByRole('heading',{name:'Connect system stats'})).toBeVisible();expect(reads).toBe(0);
+  await page.getByRole('button',{name:'Review stats access'}).click();
+  await expect(page.getByRole('button',{name:'Read system stats',exact:true})).toBeDisabled();expect(reads).toBe(0);
+  await page.getByRole('checkbox',{name:'I approve this read-only stats endpoint.'}).check();
+  await page.getByRole('button',{name:'Read system stats',exact:true}).evaluate((button:HTMLButtonElement)=>{button.click();button.click();});
+  await expect(page.getByText('Partial snapshot',{exact:true})).toBeVisible();expect(reads).toBe(1);
+  await expect(page.getByRole('progressbar',{name:'Reported CPU usage'})).toHaveAttribute('value','0');
+  await expect(page.getByRole('heading',{name:'Filesystem capacity'})).toBeVisible();
+  await expect(page.getByText('25.0% used',{exact:true})).toBeVisible();
+  await expect(page.getByText(/fixed API path or plugin is unavailable/)).toBeVisible();
+  await screenshot(page,info,'glances-system-stats');await noOverflow(page);
 });

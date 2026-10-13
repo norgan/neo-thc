@@ -18,7 +18,7 @@ process.once('SIGINT', () => { void shutdown(); });
 process.once('SIGTERM', () => { void shutdown(); });
 try {
   await app.listen({ host: '127.0.0.1', port: 4318 });
-  console.log('Neo THC: http://127.0.0.1:4318. real-discovery-v2; network discovery requires explicit scope and Start.');
+  console.log('Neo THC: http://127.0.0.1:4318. semantic-inventory-v3; network discovery requires explicit scope and Start.');
 } catch {
   console.error('Neo could not start. Check Node 24, database permissions, and whether port 4318 is already in use.');
   await app.close();

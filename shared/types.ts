@@ -23,6 +23,7 @@ export interface ObservationInput {
   note: string;
   identifiers: Identifier[];
   services: ServiceEvidence[];
+  network?: NetworkFacts;
 }
 export interface Observation extends ObservationInput {
   assetId: string;
@@ -78,6 +79,9 @@ export interface Snapshot {
   synthetic: boolean;
   collectionError: string | null;
   assets: Asset[];
+  systems?:SystemView[];
+  stats?:GlancesStats[];
+  statsActive?:string|null;
   jobs: Job[];
   targets: FixtureTarget[];
 }
@@ -107,4 +111,28 @@ export interface DiscoveryDefaults { source: string; resolver: string; servers: 
 export type DiscoveryIssue='access_denied'|'source_unavailable'|'network_unreachable'|'timeout'|'refused'|'response_cap'|'io_error';
 export interface DiscoveryOutcome {
   method:DiscoveryMethod; attempted:number; completed:number; responses:number; durationMs:number; issues:DiscoveryIssue[];
+}
+
+export interface NetworkFacts {
+  address:string; ptrNames:string[]; ptrState:string;
+  ports:{port:number;state:string}[]; mdns:string[]; ssdp:string[]; nbns:boolean;
+}
+export interface KnownService {
+  key:string; name:string; category:string; confidence:'advertised'|'port-hint';
+  evidence:string; observedAt:number; port?:number;
+}
+export interface SystemView {
+  key:string; address:string; vantage:string; displayName:string; nameBasis:'PTR'|'address';
+  nameObservedAt:number|null; currentAssetId:string; assetIds:string[]; attemptCount:number;
+  responded:boolean; respondedLatest:boolean; lastResponseAt:number|null; lastAttemptAt:number;
+  services:KnownService[]; roles:{label:string;confidence:'advertised'|'port-hint';evidence:string}[];
+  openPorts:number[]; names:string[]; identityChanged:boolean;
+}
+export interface GlancesStats {
+  id:string; requestId:string; assetId:string; source:'glances-api-v4'; endpoint:string;
+  sourceAddress:string; sampledAt:number; version:string|null; status:'complete'|'partial'|'failed';
+  hostname:string|null; operatingSystem:string|null; cpuPercent:number|null;
+  memory:{percent:number;totalBytes:number;availableBytes:number}|null;
+  filesystems:{mount:string;type:string|null;sizeBytes:number;freeBytes:number;usedBytes:number;percent:number}[]|null;
+  uptime:string|null; issues:{section:string;code:string}[];
 }

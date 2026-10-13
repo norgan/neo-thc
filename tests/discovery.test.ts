@@ -339,7 +339,7 @@ test('real runtime rejects fixture routes and excludes synthetic history before 
   const {app,store,jobs}=createRealApp({dbPath:path,discoveryInterfaces:()=>[iface]});
   try {
     const snapshot=(await app.inject({url:'/api/v1/snapshot',headers})).json();
-    assert.equal(snapshot.runtime,'real-discovery-v2');assert.equal(snapshot.assets.length,1);assert.equal(snapshot.jobs.length,0);
+    assert.equal(snapshot.runtime,'semantic-inventory-v3');assert.equal(snapshot.assets.length,1);assert.equal(snapshot.jobs.length,0);
     assert.deepEqual(snapshot.assets[0].identityWarnings,[]);assert.equal(store.observationCount(),1);
     assert.equal((await app.inject({url:'/api/v1/assets/'+hiddenId,headers})).statusCode,404);
     assert.equal((await app.inject({url:'/api/v1/jobs/old-0',headers})).statusCode,404);

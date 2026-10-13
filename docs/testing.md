@@ -103,3 +103,8 @@ Open http://127.0.0.1:4318 after build/start, or port 5173 using both developmen
 - Production asset paths and Content-Security-Policy allow the built JS/CSS to load.
 
 Record actual command outputs, environment versions, browser and failures before changing any remaining UNRUN status.
+
+
+## Semantic inventory and Glances extension
+
+The new tests cover legacy evidence parsing, cautious service/role projection, responder filtering, latest-address isolation, additive schema-v2 preservation, scoped endpoint consent/idempotency, shared collection capacity and cancellation. Isolated loopback HTTP tests exercise the real transport, fixed paths, auth/version stops, response bounds, redirects, compression and absolute deadlines. Compiled smoke adds a real loopback Glances HTTP read. Browser tests add friendly system cards and explicit partial stats snapshots on desktop/mobile. These additions are **UNRUN until the current feature-head GitHub Actions run completes**; the PR records exact run evidence. No physical Glances endpoint is contacted by CI.

@@ -99,6 +99,8 @@ export class JobManager {
   private closing = false;
   private storageFailed = false;
 
+  get busy(): boolean { return this.active !== null; }
+
   get problem(): string | null {
     return this.storageFailed
       ? 'Job state could not be saved. Collection is disabled; activity may be incomplete. Check local storage and restart Neo.'

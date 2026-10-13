@@ -1,11 +1,13 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { Asset, Job, Observation, Snapshot } from '../shared/types.js';
+import type { Asset, Job, Observation, Snapshot, SystemView, GlancesStats } from '../shared/types.js';
+import { systemViews } from '../shared/inventory.js';
+import { SystemStats } from './SystemStats.js';
 import { Discovery } from './Discovery.js';
 import './style.css';
 
-type Tab='Discovery'|'Inventory'|'System'|'Activity';
-const tabs:Tab[]=['Discovery','Inventory','System','Activity'];
+type Tab='Discovery'|'Systems'|'System'|'Activity';
+const tabs:Tab[]=['Discovery','Systems','System','Activity'];
 const activeJob=(job:Job)=>job.status==='queued'||job.status==='running';
 const issueText:Record<string,string>={
   access_denied:'The operating system denied this method. Review local security/firewall policy; Neo did not change it.',
@@ -54,6 +56,8 @@ function App() {
   const [detail,setDetail]=useState<{asset:Asset;observations:Observation[]}|null>(null);
   const [detailError,setDetailError]=useState('');
   const [refresh,setRefresh]=useState(0);
+  const [showAttempts,setShowAttempts]=useState(false),[search,setSearch]=useState('');
+  const initialView=useRef(false);
   useEffect(()=>{
     const controller=new AbortController();
     let timer:ReturnType<typeof setTimeout>;
@@ -61,8 +65,9 @@ function App() {
       try {
         const next=await request<Snapshot>('/api/v1/snapshot',{signal:controller.signal});
         if(!controller.signal.aborted){
-          if(next.runtime!=='real-discovery-v2'){setLoadError('The API is an older build. Stop Neo, rebuild, restart the API and reload this page.');return;}
+          if(next.runtime!=='semantic-inventory-v3'){setLoadError('The API is an older build. Stop Neo, rebuild, restart the API and reload this page.');return;}
           setSnapshot(next);setLoadError('');
+          if(!initialView.current){initialView.current=true;if(systemViews(next.assets).some((view)=>view.responded))setTab('Systems');}
         }
       } catch {if(!controller.signal.aborted)setLoadError('The local API is unavailable. Displayed information may be out of date. Start the API, then retry.');}
       finally {if(!controller.signal.aborted)timer=setTimeout(load,2000);}
@@ -70,23 +75,27 @@ function App() {
     void load();return()=>{controller.abort();clearTimeout(timer);};
   },[refresh]);
   const assets=(snapshot?.assets??[]).filter((asset)=>asset.latest?.synthetic===false&&asset.latest.source==='discovery-v1');
+  const systems=snapshot?.systems??systemViews(assets);
+  const selectedSystem=systems.find((system)=>system.key===selected);
+  const selectedAssetId=selectedSystem?.currentAssetId;
+  const visibleSystems=systems.filter((system)=>(showAttempts||system.responded)&&(!search||[system.displayName,system.address,...system.services.map((service)=>service.name),...system.roles.map((role)=>role.label)].join(' ').toLowerCase().includes(search.toLowerCase())));
   const jobs=(snapshot?.jobs??[]).filter((job)=>job.synthetic!==true&&!!job.spec.discovery);
   const running=jobs.find(activeJob);
-  const evidenceId=assets.find((asset)=>asset.id===selected)?.latest?.id;
+  const evidenceId=assets.find((asset)=>asset.id===selectedAssetId)?.latest?.id;
   useEffect(()=>{
     setDetail(null);setDetailError('');
-    if(!selected)return;
+    if(!selectedAssetId)return;
     const controller=new AbortController();
-    void request<{asset:Asset;observations:Observation[]}>('/api/v1/assets/'+encodeURIComponent(selected),{signal:controller.signal})
+    void request<{asset:Asset;observations:Observation[]}>('/api/v1/assets/'+encodeURIComponent(selectedAssetId),{signal:controller.signal})
       .then((data)=>{if(!controller.signal.aborted&&data.asset.latest?.synthetic===false&&data.asset.latest.source==='discovery-v1')setDetail({
         asset:data.asset,observations:data.observations.filter((item)=>item.synthetic===false&&item.source==='discovery-v1')});})
       .catch(()=>{if(!controller.signal.aborted)setDetailError('Could not load evidence. Retry or select another system.');});
     return()=>controller.abort();
-  },[selected,evidenceId,refresh]);
-  const currentAsset=assets.find((asset)=>asset.id===selected)??detail?.asset;
-  const choose=(asset:Asset)=>{setSelected(asset.id);setTab('System');};
+  },[selectedAssetId,evidenceId,refresh]);
+  const currentAsset=assets.find((asset)=>asset.id===selectedAssetId)??detail?.asset;
+  const choose=(system:SystemView)=>{setSelected(system.key);setTab('System');};
   const blockedReason=!snapshot?(loadError||'Waiting for the local API.'):loadError?'Reconnect to the local API before starting discovery.'
-    :snapshot.collectionError?snapshot.collectionError:running?'A discovery job is active. Open Activity to review progress or cancel it.':busy?'Finishing the current action.':'';
+    :snapshot.collectionError?snapshot.collectionError:snapshot.statsActive?'A system stats read is active. Finish or cancel it before discovery.':running?'A discovery job is active. Open Activity to review progress or cancel it.':busy?'Finishing the current action.':'';
   async function cancel(job:Job) {
     if(busy)return;setBusy(true);setActionError('');
     try {await request('/api/v1/jobs/'+encodeURIComponent(job.id)+'/cancel',{method:'POST',body:'{}'});setRefresh((value)=>value+1);}
@@ -107,29 +116,47 @@ function App() {
       {running&&<p role="status">A discovery job is active. <button onClick={()=>setTab('Activity')}>View activity</button></p>}
       <Discovery disabled={!!blockedReason} blockedReason={blockedReason} onStarted={()=>{setRefresh((value)=>value+1);setTab('Activity');}}/>
     </>}
-    {tab==='Inventory'&&<section><div className="section-title"><h2>Your inventory</h2><span className="muted">{assets.length} address candidates</span></div>
-      {assets.length===0&&<div className="panel"><h3>No network observations yet</h3><p>Select your interface, subnet and methods in Discovery, review the scope, then start one scan.</p><button onClick={()=>setTab('Discovery')}>Set up discovery</button></div>}
-      <div className="asset-grid">{assets.map((asset)=><article className="panel" key={asset.id}>
-        <div className="eyebrow">{asset.kind}</div><h3>{asset.label}</h3>
-        <div className="badges"><Badge value={asset.health}/><Badge value={asset.freshness}/></div>
-        <p>{asset.latest?.identifiers.find((item)=>item.kind==='ip')?.value??'No address evidence'}</p>
-        <p className="muted">Network address candidate · {asset.latest?.source}</p>
-        {asset.identityWarnings.length>0&&<p className="caution">Address reuse or identity ambiguity. Evidence is kept separate.</p>}
-        <button onClick={()=>choose(asset)}>Inspect system</button>
-      </article>)}</div></section>}
-    {tab==='System'&&<section><div className="section-title"><h2>{currentAsset?.label??'System evidence'}</h2><button onClick={()=>setTab('Inventory')}>Back to inventory</button></div>
-      {!selected&&<div className="panel">Choose an address candidate from Inventory to view its evidence.</div>}
+    {tab==='Systems'&&<section><div className="section-title"><div><h2>Your systems</h2><p>{systems.filter((system)=>system.responded).length} address views with observed responses</p></div><button onClick={()=>setTab('Discovery')}>Discover systems</button></div>
+      <label className="field">Find a name, service or role<input value={search} onChange={(event)=>setSearch(event.target.value)} placeholder="Glances, file sharing, web…"/></label>
+      <label className="check"><input type="checkbox" checked={showAttempts} onChange={(event)=>setShowAttempts(event.target.checked)}/>Show all address attempts, including unanswered ones ({systems.length})</label>
+      {!systems.length&&<div className="panel"><h3>No network observations yet</h3><p>Discover your network to find observed hostnames, services and likely roles.</p><button onClick={()=>setTab('Discovery')}>Set up discovery</button></div>}
+      {systems.length>0&&!visibleSystems.length&&<p>No matching responders. Unanswered attempts remain available using the checkbox above.</p>}
+      <div className="semantic-grid">{visibleSystems.map((system)=>{
+        const stats=snapshot?.stats?.find((item)=>item.assetId===system.currentAssetId);
+        const name=system.nameBasis==='PTR'?system.displayName:stats?.hostname??system.displayName;
+        return <article className="panel" key={system.key}>
+          <div className="eyebrow">{system.roles[0]?.label??'Observed network endpoint'}</div><h3>{name}</h3>
+          <p className="system-subtitle">{system.nameBasis==='PTR'?'Name observed through reverse DNS':stats?.hostname?'Hostname reported by Glances':'No hostname reported'} · {system.address}</p>
+          <ul className="service-list">{system.services.filter((service)=>service.confidence==='advertised').map((service)=><li key={service.key}>{service.name} · advertised</li>)}</ul>
+          {system.roles.filter((role)=>role.confidence==='port-hint').slice(0,2).map((role)=><p className="muted" key={role.label}>Possible role: {role.label}</p>)}
+          <p>{system.openPorts.length?'Accepting TCP connections: '+system.openPorts.join(', '):'No accepting TCP ports observed in the latest scan.'}</p>
+          <p className="muted">{system.respondedLatest?'Responded in the latest scan':system.responded?'No response in latest scan; earlier responses are retained':'Attempt only; no direct response observed'}{system.lastResponseAt?' · '+time(system.lastResponseAt):''}</p>
+          {stats&&(stats.cpuPercent!==null||stats.memory)?<p>Glances snapshot: {stats.cpuPercent!==null?'CPU '+stats.cpuPercent.toFixed(1)+'%':''}{stats.memory?' · RAM '+stats.memory.percent.toFixed(1)+'%':''}</p>:<p className="muted">System metrics not connected.</p>}
+          {system.attemptCount>1&&<p className="muted">Latest address view · {system.attemptCount} scan records retained separately</p>}
+          <button onClick={()=>choose(system)}>Inspect system</button>
+        </article>;
+      })}</div></section>}
+    {tab==='System'&&<section><div className="section-title"><div><h2>{selectedSystem?.displayName??'System details'}</h2>
+      {selectedSystem&&<p className="system-subtitle">{selectedSystem.address} · {selectedSystem.nameBasis==='PTR'?'Observed reverse-DNS name':'Hostname not reported'}</p>}</div><button onClick={()=>setTab('Systems')}>Back to systems</button></div>
+      {!selected&&<div className="panel">Choose a system to see its services, roles and available metrics.</div>}
       {detailError&&<div className="error" role="alert">{detailError} <button onClick={()=>setRefresh((value)=>value+1)}>Retry</button></div>}
-      {selected&&!detail&&!detailError&&<p role="status">Loading evidence…</p>}
-      {detail&&currentAsset&&<div className="columns"><section className="panel"><h3>Identity and current confidence</h3>
-        <div className="badges"><Badge value={currentAsset.health}/><Badge value={currentAsset.freshness}/></div>
-        <dl><dt>Internal ID</dt><dd className="break">{detail.asset.id}</dd><dt>Identity basis</dt><dd>Job-scoped address candidate</dd></dl>
-        <p className="muted">IP addresses are not permanent device identities. Separate jobs remain separate until identity can be verified.</p>
+      {selected&&!detail&&!detailError&&<p role="status">Loading system details…</p>}
+      {selectedSystem&&<section className="panel"><h3>Services and likely roles</h3>
+        {selectedSystem.services.length?<ul>{selectedSystem.services.map((service)=><li key={service.key}><strong>{service.name}</strong> · {service.category}<p className="muted">{service.confidence==='advertised'?'Advertised, not protocol-verified':'Port-based hint, not product verification'} · {service.evidence} · observed {time(service.observedAt)}</p></li>)}</ul>:<p>No service advertisements or accepting ports were observed in the latest scan.</p>}
+        {selectedSystem.roles.length>0&&<p>Suggested roles: {selectedSystem.roles.map((role)=>role.label).join(', ')}.</p>}
+        {selectedSystem.openPorts.includes(8006)&&<p className="muted">TCP 8006 suggests a possible Proxmox management endpoint. It does not identify the product. A credentialed Proxmox integration is not connected.</p>}
+        {selectedSystem.identityChanged&&<p className="caution">Multiple names have been observed at this address. Prior runs remain separate; this address view is not a permanent device identity.</p>}
+      </section>}
+      {selectedSystem&&<SystemStats key={selectedSystem.currentAssetId} system={selectedSystem} snapshots={(snapshot?.stats??[]).filter((item)=>selectedSystem.assetIds.includes(item.assetId))}
+        disabled={!!running||!!snapshot?.statsActive||!!snapshot?.collectionError} onUpdated={()=>setRefresh((value)=>value+1)}/>}
+      {detail&&currentAsset&&<details className="panel"><summary>Technical evidence and scan history</summary>
+        <p>Current evidence: <Badge value={currentAsset.freshness}/> · observed {currentAsset.latest?time(currentAsset.latest.observedAt):'unknown'}</p>
+        <p className="muted">Address views consolidate presentation only. Every job-scoped asset and observation is kept separately; names and advertisements can be stale or describe proxies.</p>
+        <dl><dt>Current internal ID</dt><dd className="break">{currentAsset.id}</dd></dl>
         {currentAsset.identityWarnings.map((warning)=><p className="caution" key={warning}>{warning}</p>)}
         {currentAsset.latest&&<Evidence observation={currentAsset.latest}/>}
-      </section><section className="panel"><h3>Observation history</h3><p className="muted">Latest 100 network observations; earlier evidence remains stored.</p>
-        {detail.observations.map((observation)=><details key={observation.id}><summary>{time(observation.observedAt)} · {observation.status}</summary><Evidence observation={observation}/></details>)}
-      </section></div>}
+        <h3>Scan history</h3>{detail.observations.map((observation)=><details key={observation.id}><summary>{time(observation.observedAt)} · {observation.status}</summary><Evidence observation={observation}/></details>)}
+      </details>}
     </section>}
     {tab==='Activity'&&<section><div className="section-title"><h2>Collection activity</h2><button onClick={()=>setTab('Discovery')}>New discovery</button></div>
       {!jobs.length&&<div className="panel">No discovery jobs yet. Choose and confirm a scope to begin.</div>}

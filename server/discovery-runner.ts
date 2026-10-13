@@ -24,6 +24,7 @@ export function discoveryObservation(raw: unknown, plan: DiscoveryPlan, jobId: s
       (value.ssdp.length ? ' Unauthenticated SSDP root-device claims: ' + value.ssdp.join(', ') + '; advertised URLs were discarded, not fetched.' : '') +
       (value.nbns ? ' Legacy NetBIOS browse-master response; limited coverage, not general endpoint enumeration.' : '') +
       ' Identity is this job plus address only; later jobs remain separate to avoid IP-reuse merges. Closed/refused ports can reflect a firewall. Silence is inconclusive.',
+    network:{address:value.address,ptrNames:value.dns.names,ptrState:value.dns.state,ports:value.ports,mdns:value.mdns,ssdp:value.ssdp,nbns:value.nbns},
     identifiers: [{ kind: 'ip', value: value.address }],
     services: value.ports.map((port) => ({
       name: 'TCP ' + port.port, status: 'unknown',

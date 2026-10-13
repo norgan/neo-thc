@@ -7,16 +7,21 @@ import { DiscoveryCollector } from './discovery-runner.js';
 import { localInterfaces, parseDiscovery, DISCOVERY_LIMITS } from './discovery-scope.js';
 import type { DiscoveryInterface } from '../shared/types.js';
 import { readDnsDefaults } from './discovery-defaults.js';
+import { systemViews } from '../shared/inventory.js';
+import { GLANCES_PATHS, resolveGlancesTarget, readGlances, glancesRequest } from './glances.js';
 import { Store } from './store.js';
 
 const allowedHosts = new Set(['127.0.0.1:4318', 'localhost:4318', '127.0.0.1:5173', 'localhost:5173']);
 const allowedOrigins = new Set([...allowedHosts].map((host) => 'http://' + host));
 
-export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean } = {}) {
+export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest } = {}) {
   const store = new Store(options.dbPath, options.testSupport !== true);
   const discovery = options.discoveryAdapter ?? new DiscoveryCollector();
   const adapter = options.testSupport ? options.adapter ?? discovery : discovery;
   const jobs = new JobManager(store, adapter, options.probeTimeoutMs, discovery);
+  let statsActive: {requestId:string;controller:AbortController;done:Promise<unknown>}|null=null;
+  let statsProblem:string|null=null;
+  const collectionProblem=()=>jobs.problem??statsProblem;
   const app = Fastify({ logger: false, bodyLimit: 8_192, requestTimeout: 10_000, trustProxy: false });
 
   app.addHook('onRequest', async (request, reply) => {
@@ -43,16 +48,18 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'Not found' }));
 
   const isSynthetic = () => !store.jobs().some((job) => !!job.spec.discovery) && store.assets().every((asset) => asset.latest?.synthetic !== false);
-  app.get('/api/v1/health', async () => ({ status: jobs.problem ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'real-discovery-v2', collector: 'explicit-scope-discovery', collectionError: jobs.problem }));
+  app.get('/api/v1/health', async () => ({ status: collectionProblem() ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'semantic-inventory-v3', collector: 'explicit-scope-discovery', collectionError: collectionProblem() }));
   app.get('/api/v1/snapshot', async () => ({
-    runtime: 'real-discovery-v2', synthetic: options.testSupport ? isSynthetic() : false,
-    collectionError: jobs.problem, assets: store.assets(), jobs: store.jobs(), targets: options.testSupport ? adapter.targets : [],
+    runtime: 'semantic-inventory-v3', synthetic: options.testSupport ? isSynthetic() : false,
+    collectionError: collectionProblem(), assets: store.assets(), systems:systemViews(store.assets()), stats:store.stats(), statsActive:statsActive?.requestId??null, jobs: store.jobs(), targets: options.testSupport ? adapter.targets : [],
   }));
   app.get('/api/v1/assets', async () => ({ synthetic: options.testSupport ? isSynthetic() : false, assets: store.assets() }));
   app.get<{ Params: { id: string } }>('/api/v1/assets/:id', async (request) => {
     const asset = store.assets().find((item) => item.id === request.params.id);
     if (!asset) throw new RequestError(404, 'Asset not found');
-    return { synthetic: asset.latest?.synthetic !== false, asset, observations: store.observations(asset.id), observationLimit: 100 };
+    const system=systemViews(store.assets()).find((view)=>view.assetIds.includes(asset.id));
+    const observations=(system?.assetIds??[asset.id]).flatMap((id)=>store.observations(id)).sort((left,right)=>right.observedAt-left.observedAt).slice(0,100);
+    return { synthetic: asset.latest?.synthetic !== false, asset, system, observations, stats:store.stats().filter((item)=>system?.assetIds.includes(item.assetId)), observationLimit: 100 };
   });
   app.get('/api/v1/jobs', async () => ({ jobs: store.jobs() }));
   app.get<{ Params: { id: string } }>('/api/v1/jobs/:id', async (request) => {
@@ -61,6 +68,7 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
     return { job };
   });
   if (options.testSupport === true) app.post('/api/v1/jobs', async (request, reply) => {
+    if(statsActive||statsProblem)throw new RequestError(409,'A stats read is active or unavailable. Finish it before discovery.');
     const { requestId, spec } = parseSubmission(request.body, adapter.targets.map((item) => item.key));
     const prior = store.jobByRequest(requestId);
     const job = jobs.start(requestId, spec);
@@ -79,10 +87,41 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
     return { plan, maxDurationMs: 60000, warning: 'Network evidence does not establish device identity or health. Link-wide methods reach the entire selected interface subnet.' };
   });
   app.post('/api/v1/discovery/jobs', async (request, reply) => {
+    if(statsActive||statsProblem)throw new RequestError(409,'A stats read is active or unavailable. Finish it before discovery.');
     const { requestId, spec } = parseDiscovery(request.body, interfaces(), true);
     const prior = store.jobByRequest(requestId);
     const job = jobs.start(requestId, spec);
     return reply.code(prior ? 200 : 202).send({ job });
+  });
+
+  app.post<{Params:{id:string}}>('/api/v1/assets/:id/glances/preview',async(request)=>{
+    const target=resolveGlancesTarget(store,request.params.id,request.body,false,interfaces());
+    return {endpoint:target.scheme+'://'+target.address+':'+target.port,sourceAddress:target.sourceAddress,
+      paths:GLANCES_PATHS,maxRequests:6,timeoutMs:12000,credentials:false};
+  });
+  app.post<{Params:{id:string}}>('/api/v1/assets/:id/glances/read',async(request,reply)=>{
+    const target=resolveGlancesTarget(store,request.params.id,request.body,true,interfaces());
+    const prior=store.statsByRequest(target.requestId);
+    if(prior) {
+      if(prior.assetId!==target.assetId||prior.endpoint!==target.scheme+'://'+target.address+':'+target.port)throw new RequestError(409,'requestId belongs to another stats endpoint.');
+      return {snapshot:prior};
+    }
+    if(jobs.busy||statsActive||collectionProblem())throw new RequestError(409,'Another collection is active or unavailable.');
+    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
+    const disconnected=()=>{if(!reply.raw.writableEnded)controller.abort();};
+    reply.raw.once('close',disconnected);
+    const done=readGlances(target,controller.signal,options.glancesRead??glancesRequest);
+    statsActive={requestId:target.requestId,controller,done};
+    try {
+      const snapshot=await done;
+      if(snapshot.issues.some((issue)=>issue.code==='cleanup_failed'))statsProblem='A stats socket did not close. Restart Neo before further collection.';
+      try {store.saveStats(snapshot);} catch {statsProblem='Stats storage is unavailable or full. Restart after resolving local storage before further collection.';throw new RequestError(503,statsProblem);}
+      return {snapshot};
+    } finally {clearTimeout(timeout);reply.raw.removeListener('close',disconnected);statsActive=null;}
+  });
+  app.post<{Params:{id:string}}>('/api/v1/stats/:id/cancel',async(request)=>{
+    if(statsActive?.requestId===request.params.id)statsActive.controller.abort();
+    return {cancelRequested:true};
   });
 
   if (options.webRoot) {
@@ -96,6 +135,6 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
       return reply.type(file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8').send(content);
     });
   }
-  app.addHook('onClose', async () => { await jobs.shutdown(); store.close(); });
+  app.addHook('onClose', async () => { statsActive?.controller.abort();await statsActive?.done;await jobs.shutdown(); store.close(); });
   return { app, store, jobs };
 }
