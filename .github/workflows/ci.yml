@@ -30,7 +30,7 @@ jobs:
       - name: Show runtime versions
         run: node --version && npm --version
       - name: Install dependencies
-        run: npm install --no-fund # One authorized lockfile bootstrap; restore npm ci after artifact verification
+        run: npm ci --no-fund
       - name: Typecheck
         run: npm run typecheck
       - name: Test synthetic foundation
@@ -46,3 +46,17 @@ jobs:
           path: package-lock.json
           if-no-files-found: error
           retention-days: 7
+      - name: Install pinned Chromium browser
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Test desktop and mobile browser flows
+        run: npm run test:browser
+      - name: Preserve browser report and screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-qa
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 3
