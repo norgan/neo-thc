@@ -4,15 +4,18 @@ import { join } from 'node:path';
 import type { CollectorAdapter } from './collector.js';
 import { IsolatedCollector } from './collector-runner.js';
 import { JobManager, parseSubmission, RequestError } from './jobs.js';
+import { DiscoveryCollector } from './discovery-runner.js';
+import { localInterfaces, parseDiscovery, DISCOVERY_LIMITS } from './discovery-scope.js';
+import type { DiscoveryInterface } from '../shared/types.js';
 import { Store } from './store.js';
 
 const allowedHosts = new Set(['127.0.0.1:4318', 'localhost:4318', '127.0.0.1:5173', 'localhost:5173']);
 const allowedOrigins = new Set([...allowedHosts].map((host) => 'http://' + host));
 
-export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number } = {}) {
+export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[] } = {}) {
   const store = new Store(options.dbPath);
   const adapter = options.adapter ?? new IsolatedCollector();
-  const jobs = new JobManager(store, adapter, options.probeTimeoutMs);
+  const jobs = new JobManager(store, adapter, options.probeTimeoutMs, options.discoveryAdapter ?? new DiscoveryCollector());
   const app = Fastify({ logger: false, bodyLimit: 8_192, requestTimeout: 10_000, trustProxy: false });
 
   app.addHook('onRequest', async (request, reply) => {
@@ -38,11 +41,12 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   });
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'Not found' }));
 
-  app.get('/api/v1/health', async () => ({ status: jobs.problem ? 'degraded' : 'ok', synthetic: true, collector: 'fixture-only', collectionError: jobs.problem }));
+  const isSynthetic = () => !store.jobs().some((job) => !!job.spec.discovery) && store.assets().every((asset) => asset.latest?.synthetic !== false);
+  app.get('/api/v1/health', async () => ({ status: jobs.problem ? 'degraded' : 'ok', synthetic: isSynthetic(), collector: 'fixture-and-opt-in-discovery', collectionError: jobs.problem }));
   app.get('/api/v1/snapshot', async () => ({
-    synthetic: true, collectionError: jobs.problem, assets: store.assets(), jobs: store.jobs(), targets: adapter.targets,
+    synthetic: isSynthetic(), collectionError: jobs.problem, assets: store.assets(), jobs: store.jobs(), targets: adapter.targets,
   }));
-  app.get('/api/v1/assets', async () => ({ synthetic: true, assets: store.assets() }));
+  app.get('/api/v1/assets', async () => ({ synthetic: isSynthetic(), assets: store.assets() }));
   app.get<{ Params: { id: string } }>('/api/v1/assets/:id', async (request) => {
     const asset = store.assets().find((item) => item.id === request.params.id);
     if (!asset) throw new RequestError(404, 'Asset not found');
@@ -62,6 +66,19 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   });
   app.post<{ Params: { id: string } }>('/api/v1/jobs/:id/cancel', async (request, reply) =>
     reply.code(202).send({ job: jobs.cancel(request.params.id) }));
+
+  const interfaces = options.discoveryInterfaces ?? localInterfaces;
+  app.get('/api/v1/discovery/options', async () => ({ interfaces: interfaces(), limits: DISCOVERY_LIMITS }));
+  app.post('/api/v1/discovery/preview', async (request) => {
+    const { plan } = parseDiscovery(request.body, interfaces());
+    return { plan, maxDurationMs: 60000, warning: 'Network evidence does not establish device identity or health. Link-wide methods reach the entire selected interface subnet.' };
+  });
+  app.post('/api/v1/discovery/jobs', async (request, reply) => {
+    const { requestId, spec } = parseDiscovery(request.body, interfaces(), true);
+    const prior = store.jobByRequest(requestId);
+    const job = jobs.start(requestId, spec);
+    return reply.code(prior ? 200 : 202).send({ job });
+  });
 
   if (options.webRoot) {
     const root = options.webRoot;

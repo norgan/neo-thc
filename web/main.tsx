@@ -2,9 +2,10 @@ import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Asset, Job, Observation, Snapshot } from '../shared/types.js';
 import './style.css';
+import { Discovery } from './Discovery.js';
 
-type Tab = 'Overview' | 'Inventory' | 'System' | 'Connections' | 'DNS' | 'Activity';
-const tabs: Tab[] = ['Overview', 'Inventory', 'System', 'Connections', 'DNS', 'Activity'];
+type Tab = 'Overview' | 'Inventory' | 'System' | 'Connections' | 'DNS' | 'Activity' | 'Discovery';
+const tabs: Tab[] = ['Overview', 'Inventory', 'System', 'Connections', 'DNS', 'Activity', 'Discovery'];
 const activeJob = (job: Job) => job.status === 'queued' || job.status === 'running';
 const time = (timestamp: number) => new Date(timestamp).toLocaleString();
 
@@ -25,7 +26,7 @@ function Badge({ value }: { value: string }) {
 function Evidence({ observation }: { observation: Observation }) {
   return <div className="evidence">
     <div className="row"><strong>Observed result</strong><Badge value={observation.status} /></div>
-    <p>{observation.note}</p>
+    <p><strong>{observation.synthetic === false ? 'Network evidence' : 'Synthetic fixture'}</strong></p><p>{observation.note}</p>
     <dl>
       <dt>Source</dt><dd>{observation.source}</dd>
       <dt>Vantage</dt><dd>{observation.vantage}</dd>
@@ -105,6 +106,7 @@ function App() {
   }, [selected, latestEvidenceId, refresh]);
 
   const running = snapshot?.jobs.find(activeJob);
+  const networkView = tab === 'Discovery' || snapshot?.synthetic === false;
   const assets = snapshot?.assets ?? [];
   const currentAsset = assets.find((asset) => asset.id === selected) ?? detail?.asset;
   const observedProblem = assets.find((asset) => asset.latest?.services.some((service) => service.status === 'unhealthy'));
@@ -143,9 +145,11 @@ function App() {
     <header className="masthead">
       <div><div className="eyebrow">THE HOMELAB COMPANION</div><h1>neo<span>THC</span></h1>
         <p>Network Environment Overview</p></div>
-      <div className="local-label"><span className="dot" /> Local-first foundation<br /><strong>Synthetic demo only</strong></div>
+      <div className="local-label"><span className="dot" /> Local-first foundation<br /><strong>{networkView ? 'Opt-in network discovery' : 'Synthetic demo only'}</strong></div>
     </header>
-    <div className="notice">All devices and evidence are synthetic. “Live” refreshes fixtures on a timer. No discovery, probes, credentials, or platform connections are enabled.</div>
+    <div className="notice">{networkView
+      ? 'Network discovery runs only for explicitly confirmed local IPv4 scopes. Address candidates and advertisements do not establish device identity or health. Synthetic fixtures stay separately labelled.'
+      : 'This view includes synthetic fixtures. Real network requests require a separate scope preview and confirmation in Discovery. Live fixture updates do not send network traffic.'}</div>
     <nav aria-label="Main navigation">{tabs.map((item) =>
       <button key={item} className={item === tab ? 'selected' : ''} aria-current={item === tab ? 'page' : undefined} onClick={() => setTab(item)}>{item}</button>)}</nav>
     <main>
@@ -159,7 +163,7 @@ function App() {
       {tab === 'Overview' && <>
         <div className="section-title"><div><div className="eyebrow">A QUIETER VIEW OF YOUR LAB</div><h2>Start with what we know.</h2></div><Badge value="fixture-only" /></div>
         <div className="stats">
-          <div><strong>{assets.length}</strong><span>synthetic systems</span></div>
+          <div><strong>{assets.length}</strong><span>inventory entries</span></div>
           <div><strong>{assets.filter((asset) => asset.freshness === 'fresh').length}</strong><span>fresh observations</span></div>
           <div><strong>{assets.filter((asset) => asset.identityWarnings.length > 0).length}</strong><span>identity cautions</span></div>
         </div>
@@ -188,7 +192,7 @@ function App() {
               <button disabled={!scope.some((key) => !exclusions.includes(key)) || !Number.isInteger(maxCycles) || maxCycles < 1 || maxCycles > 15} onClick={() => void start('live')}>Start live fixtures</button></div>
           </fieldset>
           {running && <p role="status">A collection is active. <button onClick={() => setTab('Activity')}>View progress</button></p>}
-          <p className="muted">Your selection is saved in this browser. No network address is an authorized scan target.</p>
+          <p className="muted">This fixture selection is saved in this browser. Discovery uses a separate, unsaved explicit network scope.</p>
         </section>
         <section className="panel">
           <h3>Evidence before conclusions</h3>
@@ -206,13 +210,13 @@ function App() {
       </>}
 
       {tab === 'Inventory' && <section>
-        <div className="section-title"><h2>Your inventory</h2><span className="muted">{assets.length} synthetic systems</span></div>
+        <div className="section-title"><h2>Your inventory</h2><span className="muted">{assets.length} inventory entries</span></div>
         {assets.length === 0 && <div className="panel"><h3>No observations yet</h3><p>Collect initial fixtures from Overview to build the inventory.</p><button onClick={() => setTab('Overview')}>Choose fixture scope</button></div>}
         <div className="asset-grid">{assets.map((asset) => <article className="panel" key={asset.id}>
           <div className="eyebrow">{asset.kind}</div><h3>{asset.label}</h3>
           <div className="badges"><Badge value={asset.health} /><Badge value={asset.freshness} /></div>
           <p>{asset.latest?.identifiers.find((identifier) => identifier.kind === 'ip')?.value ?? 'No address evidence'}</p>
-          <p className="muted">Source-scoped identity · {asset.latest?.source}</p>
+          <p className="muted">{asset.latest?.synthetic === false ? 'Network address candidate' : 'Synthetic fixture'} · {asset.latest?.source}</p>
           {asset.identityWarnings.length > 0 && <p className="caution">Address reuse or identity ambiguity. Evidence is kept separate.</p>}
           <button onClick={() => choose(asset)}>Inspect system</button>
         </article>)}</div>
@@ -239,13 +243,16 @@ function App() {
         </div>}
       </section>}
 
+      {tab === 'Discovery' && <Discovery disabled={busy || !!running || !!snapshot?.collectionError}
+        onStarted={() => { setRefresh((value) => value+1);setTab('Activity'); }} />}
+
       {tab === 'Connections' && <section className="panel"><div className="eyebrow">PLANNED</div><h2>Connections need their own safety boundary.</h2>
         <p>No device integrations are installed or connected. UniFi, OPNsense, and Proxmox are the first planned adapters; QNAP and Nextcloud require later capability checks.</p>
         <p>Future connections need product/version checks, explicit scopes, reviewed read-only operation allowlists, and local secret storage. A product name is not authorization.</p>
         <p className="muted">There is no credential form in this version.</p></section>}
 
       {tab === 'DNS' && <section className="panel"><div className="eyebrow">PLANNED</div><h2>DNS without accidental disclosure.</h2>
-        <p>No DNS queries are performed. A future diagnostic will show the resolver, queried name and type, vantage, destination, result, and uncertainty before offering next steps.</p>
+        <p>No DNS queries run automatically. Discovery supports explicit-resolver PTR queries and opt-in mDNS service-type advertisements. Broader resolver diagnostics remain planned.</p>
         <p>Local home.arpa naming and multicast .local have different behavior. Resolver advertising, observed endpoints, upstreams, and application overrides need separate evidence.</p>
         <p className="muted">Local DNS planning and external-query confirmation are still to be implemented.</p></section>}
 
@@ -253,9 +260,10 @@ function App() {
         <div className="section-title"><h2>Collection activity</h2><button onClick={() => setTab('Overview')}>New collection</button></div>
         {snapshot?.jobs.length === 0 && <div className="panel">No jobs yet. Start with a single fixture collection.</div>}
         <div className="job-list">{snapshot?.jobs.map((job) => <article className="panel" key={job.id}>
-          <div className="row"><h3>{job.spec.mode === 'initial' ? 'Initial fixtures' : 'Live fixture updates'}</h3><Badge value={job.status} /></div>
+          <div className="row"><h3>{job.spec.discovery ? 'Approved IPv4 discovery' : job.spec.mode === 'initial' ? 'Initial fixtures' : 'Live fixture updates'}</h3><Badge value={job.status} /></div>
           <p className="muted">{time(job.createdAt)} · {job.spec.scope.length - job.spec.exclusions.length} selected targets</p>
-          <progress aria-label="Collection progress" value={job.completedTargets} max={job.totalTargets} />
+          <progress aria-label="Collection progress" value={job.discoveryProgress?.addressesCompleted ?? job.completedTargets} max={job.spec.discovery?.targets.length ?? job.totalTargets} />
+          {job.spec.discovery && <p>{job.discoveryProgress?.addressesCompleted ?? 0} / {job.spec.discovery.targets.length} address attempts · TCP {job.discoveryProgress?.tcpCompleted ?? 0}/{job.spec.discovery.tcpBudget} · PTR {job.discoveryProgress?.dnsCompleted ?? 0}/{job.spec.discovery.dnsBudget}. Address candidates are not a confirmed device count.</p>
           <p>{job.completedTargets} / {job.totalTargets} target attempts · {job.cyclesCompleted} cycles · {job.observationsAdded} observations saved</p>
           {job.errors.map((error, index) => <p className="caution" key={index}>{error}</p>)}
           {activeJob(job) && <button disabled={busy} onClick={() => void cancel(job)}>Cancel collection</button>}

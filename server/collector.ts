@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import type { FixtureTarget, ObservationInput, Health, ServiceEvidence } from '../shared/types.js';
+import type { FixtureTarget, ObservationInput, Health, ServiceEvidence, DiscoveryPlan, DiscoveryProgress } from '../shared/types.js';
 
 export interface CollectionContext {
   signal: AbortSignal;
   now: number;
   cycle: number;
+  jobId?: string;
+  discovery?: DiscoveryPlan;
+  onProgress?: (progress: DiscoveryProgress) => void;
   timeoutMs?: number;
   onBatch?: (observations: ObservationInput[]) => void;
 }
@@ -14,7 +17,7 @@ export interface CollectorAdapter {
   readonly id: string;
   readonly isolated?: true;
   readonly problem?: string | null;
-  readonly capabilities: readonly ['fixture-observations'];
+  readonly capabilities: readonly ['fixture-observations'] | readonly ['network-observations'];
   readonly targets: readonly FixtureTarget[];
   collect(target: string, context: CollectionContext): Promise<ObservationInput[]>;
 }
@@ -55,6 +58,7 @@ export function fixtureObservations(target: string, context: CollectionContext):
     const isLease = target.endsWith('lease');
     const observedAt = target === 'fixture:old-lease' ? context.now - 120_000 : context.now;
     return [{
+      synthetic: true,
       id: randomUUID(),
       subjectKey: target,
       label: found.label,
@@ -75,7 +79,10 @@ export function fixtureObservations(target: string, context: CollectionContext):
     }];
 }
 
-export function observationAllowed(target: string, observation: ObservationInput): boolean {
+export function observationAllowed(target: string, observation: ObservationInput, jobId?: string): boolean {
+  if (target === 'discovery:ipv4') return ((observation.synthetic === false && observation.source === 'discovery-v1') ||
+    (observation.synthetic === true && observation.source === 'discovery-fixture-v1')) &&
+    typeof jobId === 'string' && observation.subjectKey.startsWith(jobId + '/');
   if (target === 'fixture:proxmox-lab') {
     return observation.source === 'proxmox-fixture-v1' &&
       /^demo-lab\/(node\/[a-zA-Z0-9.-]+|(?:qemu|lxc)\/[1-9][0-9]*)$/.test(observation.subjectKey);

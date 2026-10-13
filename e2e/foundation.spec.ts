@@ -152,7 +152,7 @@ test('navigation, labels, keyboard focus and mobile layout expose the fixture bo
   await expect(page.getByText('No device integrations are installed or connected.', { exact: false })).toBeVisible();
   await expect(page.getByRole('textbox')).toHaveCount(0);
   await nav(page, 'DNS').click();
-  await expect(page.getByText('No DNS queries are performed.', { exact: false })).toBeVisible();
+  await expect(page.getByText('No DNS queries run automatically.', { exact: false })).toBeVisible();
   await screenshot(page, info, 'planned-dns');
 });
 
@@ -172,4 +172,56 @@ test('simulated Proxmox inventory is opt-in and platform availability stays unce
   await expect(page.getByText('Permission-filtered coverage: completeness unknown.', { exact: false }).first()).toBeVisible();
   await expect(page.getByText('proxmox-fixture-v1', { exact: true }).first()).toBeVisible();
   await screenshot(page, info, 'simulated-proxmox-evidence');
+});
+
+test('real discovery stays inactive until separate scope preview and confirmation',async({page})=>{
+  const fixtureInterface={id:'browser-test-interface',name:'Synthetic test link',address:'192.0.2.10',netmask:'255.255.255.0',cidr:'192.0.2.0/24'};
+  let submitted=0;
+  await page.route('**/api/v1/discovery/options',async(route)=>route.fulfill({json:{interfaces:[fixtureInterface],limits:{}}}));
+  await page.route('**/api/v1/discovery/preview',async(route)=>{
+    const body=route.request().postDataJSON();
+    expect(body.interfaceId).toBe(fixtureInterface.id);expect(body.methods).toEqual(['tcp']);
+    await route.fulfill({json:{plan:{interface:fixtureInterface,cidr:body.cidr,targets:['192.0.2.1','192.0.2.2'],methods:body.methods,
+      ports:[443],resolver:null,linkScopeConfirmed:false,tcpBudget:2,dnsBudget:0,datagramBudget:0}}});
+  });
+  await page.route('**/api/v1/discovery/jobs',async(route)=>{
+    submitted++;const body=route.request().postDataJSON();
+    expect(body.confirmScope).toBe(true);expect(body.ports).toEqual([443]);expect(body.methods).toEqual(['tcp']);
+    await route.fulfill({json:{job:{id:'browser-mocked-discovery-job'}}});
+  });
+  await page.goto('/');await nav(page,'Discovery').click();
+  await expect(page.getByRole('heading',{name:'Scoped IPv4 discovery'})).toBeVisible();
+  await expect(page.getByRole('combobox',{name:'Source interface'})).toHaveValue('');
+  for(const box of await page.getByRole('checkbox').all())await expect(box).not.toBeChecked();
+  await expect(page.getByRole('button',{name:'Preview discovery'})).toBeDisabled();
+  expect(submitted).toBe(0);
+  await page.getByRole('combobox',{name:'Source interface'}).selectOption(fixtureInterface.id);
+  await page.getByRole('textbox',{name:'Approved IPv4 CIDR'}).fill('192.0.2.0/30');
+  await page.getByRole('checkbox',{name:'TCP connect port probes',exact:true}).check();
+  await page.getByRole('textbox',{name:'TCP ports, comma separated (maximum eight)'}).fill('443');
+  await page.getByRole('button',{name:'Preview discovery'}).click();
+  await expect(page.getByRole('heading',{name:'Review this exact scope'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Start approved discovery'})).toBeDisabled();
+  expect(submitted).toBe(0);
+  await page.getByRole('checkbox',{name:'I confirm this exact scope and these network methods.'}).check();
+  await page.getByRole('textbox',{name:'Approved IPv4 CIDR'}).fill('192.0.2.0/29');
+  await expect(page.getByRole('heading',{name:'Review this exact scope'})).toHaveCount(0);
+  await page.getByRole('button',{name:'Preview discovery'}).click();
+  await page.getByRole('checkbox',{name:'I confirm this exact scope and these network methods.'}).check();
+  await page.getByRole('button',{name:'Start approved discovery'}).click();
+  await expect(page.getByRole('heading',{name:'Collection activity'})).toBeVisible();
+  expect(submitted).toBe(1);
+});
+
+test('broadcast and multicast are distinct, explicitly link-wide and never auto-selected',async({page})=>{
+  await page.route('**/api/v1/discovery/options',async(route)=>route.fulfill({json:{interfaces:[
+    {id:'test-link',name:'Synthetic test link',address:'192.0.2.10',netmask:'255.255.255.0',cidr:'192.0.2.0/24'}],limits:{}}}));
+  await page.goto('/');await nav(page,'Discovery').click();
+  await page.getByRole('combobox',{name:'Source interface'}).selectOption('test-link');
+  await page.getByRole('checkbox',{name:'Legacy NetBIOS browse-master broadcast (limited coverage)',exact:true}).check();
+  await expect(page.getByText('Link-wide methods require the entire current /24–/30 interface subnet, without overlapping interfaces. Multicast and broadcast reach listeners beyond individual accepted responses.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('checkbox',{name:'I approve link-wide transmission on 192.0.2.0/24, including all hosts on that link.'})).not.toBeChecked();
+  await expect(page.getByRole('checkbox',{name:'mDNS service-type multicast (not full service discovery)',exact:true})).not.toBeChecked();
+  await expect(page.getByRole('checkbox',{name:'SSDP root-device multicast (no URL fetching)',exact:true})).not.toBeChecked();
+  await noOverflow(page);
 });

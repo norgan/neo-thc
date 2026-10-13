@@ -26,7 +26,7 @@ async function terminal(store: Store, id: string, timeout = 3_000): Promise<Job>
 }
 function observation(overrides: Partial<ObservationInput> = {}): ObservationInput {
   return {
-    id: 'event-1', subjectKey: 'fixture:gateway', label: 'Demo gateway', kind: 'device',
+    synthetic: true, id: 'event-1', subjectKey: 'fixture:gateway', label: 'Demo gateway', kind: 'device',
     source: 'fixture-v1', vantage: 'synthetic-local-demo', observedAt: 10_000, ttlMs: 1_000,
     status: 'healthy', note: 'Synthetic evidence', identifiers: [{ kind: 'ip', value: '192.0.2.1' }],
     services: [], ...overrides,

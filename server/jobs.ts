@@ -94,7 +94,7 @@ export class JobManager {
   get problem(): string | null {
     return this.storageFailed
       ? 'Job state could not be saved. Collection is disabled; activity may be incomplete. Check local storage and restart Neo.'
-      : this.adapter.problem ?? null;
+      : this.adapter.problem ?? this.discoveryAdapter?.problem ?? null;
   }
 
   private persist(job: Job): void {
@@ -105,7 +105,7 @@ export class JobManager {
     }
   }
 
-  constructor(private readonly store: Store, private readonly adapter: CollectorAdapter, private readonly probeTimeoutMs = 750) {
+  constructor(private readonly store: Store, private readonly adapter: CollectorAdapter, private readonly probeTimeoutMs = 750, private readonly discoveryAdapter?: CollectorAdapter) {
     for (const job of store.jobs()) {
       if (job.status === 'queued' || job.status === 'running') {
         store.saveJob({ ...job, status: 'interrupted', finishedAt: Date.now(),
@@ -117,6 +117,7 @@ export class JobManager {
   start(requestId: string, spec: JobSpec): Job {
     if (this.closing) throw new RequestError(503, 'Application is shutting down');
     if (this.problem) throw new RequestError(503, this.problem);
+    if (spec.discovery && !this.discoveryAdapter) throw new RequestError(503, 'Discovery is unavailable');
     const existing = this.store.jobByRequest(requestId);
     if (existing) {
       if (JSON.stringify(existing.spec) !== JSON.stringify(spec)) throw new RequestError(409, 'requestId already belongs to different job settings');
@@ -168,19 +169,24 @@ export class JobManager {
           try {
             const ingest = (observations: ObservationInput[]) => {
               signal.throwIfAborted();
-              if (observations.length > 100 || observations.some((item) => !observationAllowed(target, item))) {
+              if (observations.length > 100 || observations.some((item) => !observationAllowed(target, item, job.id))) {
                 throw new Error('Adapter returned an invalid result');
               }
               job.observationsAdded += this.store.ingest(observations);
               this.persist(job);
             };
-            const observations = await collectWithDeadline(this.adapter, target,
-              { signal, now: Date.now(), cycle, onBatch: ingest }, this.probeTimeoutMs);
+            const adapter = job.spec.discovery ? this.discoveryAdapter! : this.adapter;
+            const observations = await collectWithDeadline(adapter, target,
+              { signal, now: Date.now(), cycle, jobId: job.id, discovery: job.spec.discovery, onBatch: ingest,
+                onProgress: (progress) => { signal.throwIfAborted(); job.discoveryProgress = progress; this.persist(job); },
+              }, job.spec.discovery ? 60000 : this.probeTimeoutMs);
             signal.throwIfAborted();
             if (observations.length) ingest(observations);
           } catch {
             if (signal.aborted) throw new Error('Job stopped');
-            if (job.errors.length < 20) job.errors.push('One synthetic collection failed or timed out; useful partial results and prior evidence were retained.');
+            if (job.errors.length < 20) job.errors.push(job.spec.discovery
+              ? 'Discovery failed, timed out or reached a response cap. Saved address-candidate evidence and prior observations were retained.'
+              : 'One synthetic collection failed or timed out; useful partial results and prior evidence were retained.');
           }
           job.completedTargets++;
           this.persist(job);

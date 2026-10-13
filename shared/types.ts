@@ -10,6 +10,7 @@ export interface ServiceEvidence {
   note: string;
 }
 export interface ObservationInput {
+  synthetic: boolean;
   id: string;
   subjectKey: string;
   label: string;
@@ -45,6 +46,7 @@ export interface JobSpec {
   intervalMs: number;
   maxCycles: number;
   maxDurationMs: number;
+  discovery?: DiscoveryPlan;
 }
 export type JobStatus =
   | 'queued' | 'running' | 'completed' | 'cancelled'
@@ -62,6 +64,7 @@ export interface Job {
   cyclesCompleted: number;
   observationsAdded: number;
   errors: string[];
+  discoveryProgress?: DiscoveryProgress;
 }
 export interface FixtureTarget {
   key: string;
@@ -69,9 +72,28 @@ export interface FixtureTarget {
   defaultSelected?: boolean;
 }
 export interface Snapshot {
-  synthetic: true;
+  synthetic: boolean;
   collectionError: string | null;
   assets: Asset[];
   jobs: Job[];
   targets: FixtureTarget[];
+}
+
+export type DiscoveryMethod = 'tcp' | 'ptr' | 'mdns' | 'nbns' | 'ssdp';
+export interface DiscoveryInterface { id: string; name: string; address: string; netmask: string; cidr: string; }
+export interface DiscoveryPlan {
+  interface: DiscoveryInterface;
+  cidr: string;
+  targets: string[];
+  methods: DiscoveryMethod[];
+  ports: number[];
+  resolver: string | null;
+  linkScopeConfirmed: boolean;
+  tcpBudget: number;
+  dnsBudget: number;
+  datagramBudget: number;
+}
+export interface DiscoveryProgress {
+  addressesCompleted: number; totalAddresses: number;
+  tcpCompleted: number; dnsCompleted: number; datagramsSent: number;
 }

@@ -88,6 +88,10 @@ Assess QNAP and Nextcloud support by version/capability, then endpoint profiling
 
 Before enabling remote interface or control functionality, decide and document exactly where UI assets, API, analysis, persistence and job authorization run, who can receive each data category, and what the owner must explicitly enable. Test authenticated site isolation, pairing/revocation, scope enforcement, redaction, replay/conflict rejection, duplicate delivery, offline capacity and reconnection. Prove that hosted UI changes cannot silently broaden local authority. No remote hosting, credential configuration, security-setting change or data upload follows merely from this product-direction decision.
 
+## Discovery implementation milestone
+
+An opt-in initial IPv4 discovery slice now has source for explicit interface/CIDR selection, PTR through a selected on-link resolver, bounded TCP connect probes, mDNS service-type multicast, SSDP root-device multicast and a limited legacy browse-master broadcast. It does not implement ping/ARP, general UDP scanning, IPv6 or real platform API connections. [Discovery documentation](discovery.md) specifies exact traffic, scope, evidence and validation limits. Source presence is not proof of physical network compatibility.
+
 ## Verification status
 
 The full-product acceptance checks above remain planned. The local fixture foundation passed 27 unit tests, 12 desktop/mobile Chromium cases, typechecks, build and compiled-worker startup smoke at [source head 60c860e](https://github.com/norgan/neo-thc/actions/runs/38334947206). Those tests do not validate real integrations, agents or split deployment. Documentation publication is separate from deployment.

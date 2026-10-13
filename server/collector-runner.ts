@@ -20,6 +20,7 @@ export type FixtureScenario = typeof fixtureScenarios[number];
 /** Source, vantage, identity, timestamp and TTL are host policy, never worker claims. */
 export function proxmoxObservations(resources: Resource[], installation = 'demo-lab', now = Date.now()): ObservationInput[] {
   return resources.map((resource) => ({
+    synthetic: true,
     id: randomUUID(),
     subjectKey: installation + '/' + resource.id,
     label: resource.label,

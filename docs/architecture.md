@@ -2,7 +2,7 @@
 
 ## Implemented source boundary
 
-A single local Node 24 process serves the Fastify API and production React files. SQLite records assets, immutable normalized observations, and job snapshots. The default IsolatedCollector runs one fixed, trusted worker per selected target, producing synthetic examples without network or OS discovery calls. The browser polls a snapshot every two seconds without overlapping its own polls.
+A single local Node 24 process serves the Fastify API and production React files. SQLite records assets, immutable normalized observations, and job snapshots. The default IsolatedCollector runs one fixed, trusted worker per selected target, producing synthetic examples. A separate opt-in DiscoveryCollector uses fixed scoped TCP/DNS/UDP operations; opening the UI or previewing scope sends no probes. The browser polls a snapshot every two seconds without overlapping its own polls.
 
 GitHub Actions passed the collector milestone (26 unit tests, 12 desktop/mobile Chromium cases, typechecks, production build and compiled-worker startup smoke). A late-callback review regression extends the unit suite to 27; see current PR checks and testing.md for exact head results. The wider requirements remain in requirements.md.
 
@@ -30,6 +30,12 @@ Two modes are intended:
 See [deployment modes and trust boundary](deployment-modes.md) for the decision record. Managed-system credentials stay at the collector. The proposed connection is collector-initiated, authenticated and encrypted, with explicit pairing/site identity and collector-enforced scopes. Any hosted scheduling would submit bounded authorized job requests, never arbitrary commands or scans. Offline buffering, backpressure, replay-safe reconnection, data recipients/retention and revocation must be designed and reviewed first.
 
 The current executable has no pairing, remote channel, remote authentication or endpoint-agent runtime. Its fixed loopback listener, Host/Origin checks and CSP remain unchanged; do not expose it or relax those guards to simulate split deployment.
+
+## Discovery vertical slice
+
+See [explicit-scope discovery](discovery.md). The separate Discovery screen and /api/v1/discovery options/preview/jobs routes never use the fixture submission path. The server enumerates eligible local IPv4 interfaces for user selection and normalizes a bounded on-link CIDR/method/port plan. The shared JobManager maintains one global active slot.
+
+The discovery-scope module validates current interface/scope and budgets. discovery-protocols.mjs parses bounded untrusted replies; discovery-network.mjs owns fixed TCP/DNS/UDP calls; discovery-worker.mjs runs them inside the killable worker. discovery-runner.ts validates messages and constructs job-scoped address-candidate observations with explicit real/synthetic provenance. No adapter credentials or hosted transport are introduced.
 
 ## Identity and evidence
 
@@ -69,7 +75,7 @@ Example submission:
 }
 ```
 
-No addresses, CIDRs, platform URLs or credentials are accepted as targets. Only seven registered fixture keys are valid, including the opt-in simulated Proxmox installation. Exclusions must belong to scope; at least one target must remain. Request keys and targets are validated strictly. Scope/exclusions are sorted and copied into the job.
+The fixture submission endpoint accepts no addresses, CIDRs, platform URLs or credentials as targets. The separate discovery endpoint accepts only its explicitly validated local IPv4 plan; see discovery.md. Only seven registered fixture keys are valid, including the opt-in simulated Proxmox installation. Exclusions must belong to scope; at least one target must remain. Request keys and targets are validated strictly. Scope/exclusions are sorted and copied into the job.
 
 Initial mode requires one cycle. Live allows 1–60 cycles, 1–30 second intervals and a 1–60 second total lifetime; the UI uses a 30-second lifetime and caps its cycle control at 15. Collection ends at the earlier cycle/lifetime bound. The interval is a delay between complete cycles, not a fixed-rate guarantee.
 

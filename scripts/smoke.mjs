@@ -59,6 +59,7 @@ async function portIsClosed() {
 try {
   await access('dist/server/server/collector-worker.mjs');
   await access('dist/server/server/proxmox.mjs');
+  await access('dist/server/server/discovery-worker.mjs');
   assert.ok(await portIsClosed(), 'Port 4318 must be unused before this smoke check');
   server = spawn('npm', ['start'], {
     detached: true,
@@ -76,7 +77,7 @@ try {
     try {
       const response = await api('/api/v1/health');
       const health = await response.json();
-      return health.status === 'ok' && health.synthetic === true && health.collector === 'fixture-only';
+      return health.status === 'ok' && health.synthetic === true && health.collector === 'fixture-and-opt-in-discovery';
     } catch { return false; }
   }, 10_000, 'Compiled server never became ready');
 
@@ -129,7 +130,15 @@ try {
   const enriched = await (await api('/api/v1/assets')).json();
   assert.equal(enriched.assets.length, 7);
   assert.equal(enriched.assets.filter((asset) => asset.latest.source === 'proxmox-fixture-v1').length, 5);
-  console.log('PASS: npm start, loopback health, production HTML/JS/CSS, fixture jobs and compiled Proxmox worker');
+  const { DiscoveryCollector } = await import('../dist/server/server/discovery-runner.js');
+  const { parseDiscovery } = await import('../dist/server/server/discovery-scope.js');
+  const syntheticInterface = {id:'smoke-interface',name:'Synthetic smoke link',address:'192.0.2.10',netmask:'255.255.255.0',cidr:'192.0.2.0/24'};
+  const syntheticPlan = parseDiscovery({requestId:'compiled-discovery-smoke',interfaceId:syntheticInterface.id,cidr:'192.0.2.0/30',methods:['tcp'],ports:[443]},[syntheticInterface]).plan;
+  const discovery = new DiscoveryCollector(true,()=>[syntheticInterface]);
+  const samples = await discovery.collect('discovery:ipv4',{signal:controller.signal,now:Date.now(),cycle:0,jobId:randomUUID(),discovery:syntheticPlan});
+  assert.equal(samples.length,syntheticPlan.targets.length);
+  assert.ok(samples.every((sample)=>sample.synthetic === true && sample.source === 'discovery-fixture-v1'));
+  console.log('PASS: npm start, loopback health, production assets, fixture jobs, compiled Proxmox and mock-only discovery workers');
 } catch (error) {
   failed = true;
   console.error('FAIL: production smoke check:', error.message);
