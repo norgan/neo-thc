@@ -190,3 +190,19 @@ test('Glances access is explicit, single-submit and renders genuine zero/partial
   await expect(page.getByText(/fixed API path or plugin is unavailable/)).toBeVisible();
   await screenshot(page,info,'glances-system-stats');await noOverflow(page);
 });
+
+test('an unavailable or mismatched API disables stats access from a cached selected system',async({page})=>{
+  let mode='ready';
+  await page.route('**/api/v1/snapshot',(route)=>mode==='offline'?route.abort('failed'):route.fulfill({json:{
+    ...snapshot([asset]),runtime:mode==='old'?'older-runtime':'semantic-inventory-v3'}}));
+  await page.route('**/api/v1/assets/qa-asset',(route)=>route.fulfill({json:{asset,observations:[evidence]}}));
+  await page.goto('/');await page.getByRole('button',{name:'Inspect system'}).click();
+  await expect(page.getByRole('button',{name:'Review stats access'})).toBeEnabled();
+  mode='offline';await expect(page.getByText(/The local API is unavailable/)).toBeVisible({timeout:6000});
+  await expect(page.getByRole('button',{name:'Review stats access'})).toBeDisabled();
+  mode='old';await page.getByRole('button',{name:'Retry',exact:true}).click();
+  await expect(page.getByText(/The API is an older build/)).toBeVisible();
+  await expect(page.getByRole('button',{name:'Review stats access'})).toBeDisabled();
+  mode='ready';await page.getByRole('button',{name:'Retry',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Review stats access'})).toBeEnabled();
+});

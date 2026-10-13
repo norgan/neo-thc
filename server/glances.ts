@@ -32,7 +32,7 @@ export function normalizeGlances(path:GlancesPath,value:unknown):unknown {
     if(!version||!/^4\.[0-9]+\.[0-9]+(?:[.a-zA-Z0-9-]*)$/.test(version))throw new GlancesError('unsupported_version');
     return version;
   }
-  if(path==='/api/4/uptime')return text(value,64);
+  if(path==='/api/4/uptime'){const uptime=text(value,64);if(!uptime)throw new GlancesError('invalid_response');return uptime;}
   if(path==='/api/4/fs') {
     if(!Array.isArray(value)||value.length>128)throw new GlancesError('invalid_response');
     return value.map((unknownRow)=>{

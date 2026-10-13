@@ -2,7 +2,7 @@
 
 Neo means **Network Environment Overview**. THC means **The Homelab Companion**.
 
-Planning baseline created 13 October 2026; updated the same day with the owner-approved agentless-first and two-mode deployment direction. This document records intended product behavior. A tested local synthetic foundation now exists; see [verification](testing.md) and current PR checks. Planned requirements are not claims that real integrations or remote deployment work.
+Planning baseline created 13 October 2026; updated the same day with the owner-approved agentless-first and two-mode deployment direction. This document records intended product behavior. A local real-only discovery foundation and opt-in Glances stats slice now exist; see [verification](testing.md) and current PR checks. Planned requirements are not claims that every platform integration or remote deployment works. Current implemented boundaries are described in the README and Glances/discovery documents.
 
 ## Scope and boundaries
 

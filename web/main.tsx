@@ -106,7 +106,7 @@ function App() {
     <header className="masthead"><div><div className="eyebrow">THE HOMELAB COMPANION</div><h1>neo<span>THC</span></h1><p>Network Environment Overview</p></div>
       <div className="local-label"><span className="dot"/> Local network discovery<br/><strong>{snapshot?.runtime??'Connecting'}</strong></div></header>
     <div className="notice">Choose your local interface and review the exact scope before starting. Nothing scans automatically. Network responses and advertisements do not establish device identity or service health.</div>
-    <nav aria-label="Main navigation">{tabs.map((item)=><button key={item} className={tab===item?'selected':''} aria-current={tab===item?'page':undefined} onClick={()=>setTab(item)}>{item}</button>)}</nav>
+    <nav aria-label="Main navigation">{tabs.map((item)=><button key={item} className={tab===item?'selected':''} aria-current={tab===item?'page':undefined} onClick={()=>{initialView.current=true;setTab(item);}}>{item}</button>)}</nav>
     <main><div aria-live="polite">
       {loadError&&<div className="error">{loadError} <button onClick={()=>setRefresh((value)=>value+1)}>Retry</button></div>}
       {actionError&&<div className="error">{actionError}</div>}
@@ -129,9 +129,9 @@ function App() {
           <p className="system-subtitle">{system.nameBasis==='PTR'?'Name observed through reverse DNS':stats?.hostname?'Hostname reported by Glances':'No hostname reported'} · {system.address}</p>
           <ul className="service-list">{system.services.filter((service)=>service.confidence==='advertised').map((service)=><li key={service.key}>{service.name} · advertised</li>)}</ul>
           {system.roles.filter((role)=>role.confidence==='port-hint').slice(0,2).map((role)=><p className="muted" key={role.label}>Possible role: {role.label}</p>)}
-          <p>{system.openPorts.length?'Accepting TCP connections: '+system.openPorts.join(', '):'No accepting TCP ports observed in the latest scan.'}</p>
+          <p>{system.openPorts.length?'TCP ports observed accepting: '+system.openPorts.join(', '):'No accepting TCP ports observed in the latest scan.'}</p>
           <p className="muted">{system.respondedLatest?'Responded in the latest scan':system.responded?'No response in latest scan; earlier responses are retained':'Attempt only; no direct response observed'}{system.lastResponseAt?' · '+time(system.lastResponseAt):''}</p>
-          {stats&&(stats.cpuPercent!==null||stats.memory)?<p>Glances snapshot: {stats.cpuPercent!==null?'CPU '+stats.cpuPercent.toFixed(1)+'%':''}{stats.memory?' · RAM '+stats.memory.percent.toFixed(1)+'%':''}</p>:<p className="muted">System metrics not connected.</p>}
+          {stats&&(stats.cpuPercent!==null||stats.memory)?<p>Glances snapshot ({time(stats.sampledAt)}): {stats.cpuPercent!==null?'CPU '+stats.cpuPercent.toFixed(1)+'%':''}{stats.memory?' · RAM '+stats.memory.percent.toFixed(1)+'%':''}</p>:<p className="muted">System metrics not connected.</p>}
           {system.attemptCount>1&&<p className="muted">Latest address view · {system.attemptCount} scan records retained separately</p>}
           <button onClick={()=>choose(system)}>Inspect system</button>
         </article>;
@@ -148,7 +148,7 @@ function App() {
         {selectedSystem.identityChanged&&<p className="caution">Multiple names have been observed at this address. Prior runs remain separate; this address view is not a permanent device identity.</p>}
       </section>}
       {selectedSystem&&<SystemStats key={selectedSystem.currentAssetId} system={selectedSystem} snapshots={(snapshot?.stats??[]).filter((item)=>selectedSystem.assetIds.includes(item.assetId))}
-        disabled={!!running||!!snapshot?.statsActive||!!snapshot?.collectionError} onUpdated={()=>setRefresh((value)=>value+1)}/>}
+        disabled={!!loadError||!snapshot||!!running||!!snapshot?.statsActive||!!snapshot?.collectionError} onUpdated={()=>setRefresh((value)=>value+1)}/>}
       {detail&&currentAsset&&<details className="panel"><summary>Technical evidence and scan history</summary>
         <p>Current evidence: <Badge value={currentAsset.freshness}/> · observed {currentAsset.latest?time(currentAsset.latest.observedAt):'unknown'}</p>
         <p className="muted">Address views consolidate presentation only. Every job-scoped asset and observation is kept separately; names and advertisements can be stale or describe proxies.</p>

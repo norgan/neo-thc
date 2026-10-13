@@ -1,6 +1,6 @@
 ## Current runtime correction
 
-The production app is real-only (real-discovery-v2): Discovery/Inventory/System/Activity, no fixture collection route. Synthetic legacy database rows are retained but excluded before evidence projection, ambiguity summaries and capacity checks. Tests inject fixtures from tests/support; production build excludes that directory. Interface/CIDR/DNS defaults come from bounded local configuration reads, never network queries. Method diagnostics are host-validated and partial completion remains explicit.
+The production app is real-only (semantic-inventory-v3): Discovery/Systems/System/Activity, no fixture collection route. Synthetic legacy database rows are retained but excluded before evidence projection, ambiguity summaries and capacity checks. Tests inject fixtures from tests/support; production build excludes that directory. Interface/CIDR/DNS defaults come from bounded local configuration reads, never network queries. Method diagnostics are host-validated and partial completion remains explicit.
 
 # Foundation architecture and collector extension
 
@@ -16,7 +16,7 @@ GitHub Actions passed the collector milestone (26 unit tests, 12 desktop/mobile 
 - server/collector.ts: narrow adapter contract and six deterministic scenarios
 - server/collector-runner.ts: fixed worker lifecycle, parent validation and trusted provenance
 - server/collector-worker.mjs and server/proxmox.mjs: checked-JavaScript worker, pure normalizer and fixed mock operation plan
-- server/store.ts: SQLite schema v1, transactional observation writes, source-scoped identity and evidence projection
+- server/store.ts: SQLite schema v2 (additive transactional stats history), transactional observation writes, source-scoped identity and evidence projection
 - server/jobs.ts: input validation, idempotent submission, concurrency slot, bounded scheduler and cancellation
 - server/app.ts: loopback-facing API and built static files; sanitized errors and browser-origin guards
 - server/main.ts: fixed loopback listener, database path and shutdown
@@ -128,3 +128,6 @@ Official sources reviewed while authoring:
 - [TypeScript 5.9.3](https://github.com/microsoft/TypeScript/releases/tag/v5.9.3) and [tsx 4.20.6](https://github.com/privatenumber/tsx/releases/tag/v4.20.6).
 
 Exact direct pins alone do not establish compatibility or safety. The authentic generated lockfile is committed and CI uses npm ci. See [testing](testing.md) and [browser testing](browser-testing.md) for evidence and unverified areas.
+
+
+The semantic inventory is a presentation projection over independent discovery records. Glances is the first opt-in production HTTP adapter: a user-approved single endpoint, six fixed read-only paths, direct source-bound requests and no credentials. Stats use a separate bounded local table and share discovery capacity. See [Glances transport and upgrade boundary](glances.md). Authenticated platform integrations and remote control remain planned.

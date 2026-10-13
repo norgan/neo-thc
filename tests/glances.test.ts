@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer,type Server,type RequestListener} from 'node:http';
 import {setTimeout as delay} from 'node:timers/promises';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {createServer as createHttpsServer} from 'node:https';
 import {DatabaseSync} from 'node:sqlite';
 import {glancesRequest,readGlances,normalizeGlances,GLANCES_PATHS,GlancesError,type GlancesTarget} from '../server/glances.js';
 import {createApp} from '../server/app.js';
@@ -51,6 +52,7 @@ test('unsupported version and authentication stop further reads; valid partial m
   const partial=await readGlances(target,new AbortController().signal,async(_t,path)=>{if(path==='/api/4/fs')throw new GlancesError('not_found');return sample[path];});
   assert.equal(partial.status,'partial');assert.equal(partial.cpuPercent,0);assert.equal(partial.filesystems,null);
   assert.deepEqual(normalizeGlances('/api/4/fs',[]),[]);
+  for(const missing of [null,'',undefined])assert.throws(()=>normalizeGlances('/api/4/uptime',missing));
   for(const [path,value] of [['/api/4/cpu',{total:101}],['/api/4/mem',{total:1,available:2,percent:0}],['/api/4/fs',[{mnt_point:'/',size:100,used:101,free:0,percent:0}]]] as const)
     assert.throws(()=>normalizeGlances(path,value));
 });
@@ -172,5 +174,29 @@ test('failed schema migration rolls back the version and leaves original evidenc
     const check=new DatabaseSync(path);
     assert.equal((check.prepare('PRAGMA user_version').get() as {user_version:number}).user_version,1);
     assert.deepEqual(check.prepare('SELECT payload FROM observations').all(),before);check.close();
+  } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+test('HTTPS rejects an untrusted certificate without sending application requests or downgrading',async(t)=>{
+  const dir=await mkdtemp(join(tmpdir(),'neo-tls-fixture-'));
+  try {
+    const key=join(dir,'key.pem'),cert=join(dir,'cert.pem');
+    try {
+      await promisify(execFile)('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=localhost','-keyout',key,'-out',cert],
+        {timeout:10000,maxBuffer:8192});
+    } catch(error) {
+      if(error&&typeof error==='object'&&'code' in error&&error.code==='ENOENT'){t.skip('OpenSSL is required only for this ephemeral TLS fixture; CI supplies it');return;}
+      throw error;
+    }
+    let requests=0;
+    const server=createHttpsServer({key:await readFile(key),cert:await readFile(cert)},(_request,response)=>{requests++;response.end('"4.5.8"');});
+    server.on('tlsClientError',()=>{});
+    await new Promise<void>((resolve)=>server.listen(0,'127.0.0.1',resolve));
+    const address=server.address();assert.ok(address&&typeof address!=='string');
+    try {
+      await assert.rejects(glancesRequest({assetId:'tls-test',requestId:'tls-test-request',scheme:'https',address:'127.0.0.1',sourceAddress:'127.0.0.1',port:address.port},
+        '/api/4/version',new AbortController().signal),(error:unknown)=>error instanceof GlancesError&&error.code==='tls_validation_failed');
+      assert.equal(requests,0);
+    } finally {server.closeAllConnections();await new Promise<void>((resolve)=>server.close(()=>resolve()));}
   } finally {await rm(dir,{recursive:true,force:true});}
 });

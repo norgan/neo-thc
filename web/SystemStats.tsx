@@ -72,7 +72,7 @@ export function SystemStats({system,snapshots,disabled,onUpdated}:{system:System
       <p>Read real CPU, memory and filesystem capacity from a Glances REST API v4 endpoint on this selected system.</p>
       {system.services.some((service)=>service.key==='_glances._tcp.local')&&<p>Glances was advertised. That service type can be REST or XML-RPC; its API port and protocol have not been resolved.</p>}
       <p className="muted">61208 is the documented default suggestion, not an observed port. Confirm the actual REST endpoint. No installation, credentials, background polling or configuration changes are performed.</p>
-      {disabled&&!busy&&<p className="caution">Finish the active collection before reading stats.</p>}
+      {disabled&&!busy&&<p className="caution">Stats access is paused while another collection is active or the local API is unavailable.</p>}
       {error&&<p className="error" role="alert">{error}</p>}
       <fieldset disabled={busy||disabled}><legend>Glances endpoint on {system.address}</legend>
         <label className="field">Endpoint scheme<select value={scheme} onChange={(event)=>setScheme(event.target.value as 'http'|'https')}><option value="http">HTTP (unencrypted)</option><option value="https">HTTPS (verified certificate)</option></select></label>

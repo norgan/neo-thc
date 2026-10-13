@@ -3,7 +3,7 @@
 **Neo — Network Environment Overview**  
 **THC — The Homelab Companion**
 
-A local-first, agentless network discovery app. The normal runtime contains no demo controls, sample devices or simulated platform integration. The opening screen is Discovery.
+A local-first, agentless network discovery app. The normal runtime contains no demo controls, sample devices or simulated platform integration. The opening screen is Discovery for an empty database and Systems when observed responders are already saved.
 
 ## Start or update locally
 
@@ -16,11 +16,11 @@ npm.cmd run build
 npm.cmd start
 ```
 
-Open **http://127.0.0.1:4318**. The header should show **real-discovery-v2**. If you see an older demo interface, stop the old server, rebuild, restart and reload. A new frontend detects an older API and explains the mismatch.
+Open **http://127.0.0.1:4318**. The header should show **semantic-inventory-v3**. If you see an older demo interface, stop the old server, rebuild, restart and reload. A new frontend detects an older API and explains the mismatch.
 
 On macOS/Linux, use npm instead of npm.cmd. Build/start commands are portable by source inspection; Windows itself has not been executed in CI. The standalone smoke/browser process harnesses target Linux.
 
-Build cleans only generated dist/server files; it never touches data. SQLite remains schema v1. **Do not wipe your database:** real discovery results are preserved. Legacy synthetic rows remain stored but are excluded from normal inventory, evidence, activity, ambiguity warnings and collection capacity. There is no public fixture submission endpoint.
+Build cleans only generated dist/server files; it never touches data. SQLite upgrades transactionally to schema v2. **Stop Neo and back up your database before updating:** real discovery results are preserved; see [Windows backup and rollback](docs/glances.md#windows-update-and-database-backup). Legacy synthetic rows remain stored but are excluded from normal inventory, evidence, activity, ambiguity warnings and collection capacity. There is no public fixture submission endpoint.
 
 ## Real discovery
 
@@ -28,7 +28,7 @@ Build cleans only generated dist/server files; it never touches data. SQLite rem
 2. Select methods. TCP ports are fully visible in a multiline field; target × unique-port counts show the exact attempt budget.
 3. For PTR DNS, Neo reads local system configuration without sending a query. On Windows it uses a fixed, read-only Get-DnsClientServerAddress command to find interface-specific IPv4 resolvers. Other systems, or an unavailable Windows read, use a clearly labelled system-wide configuration list. Only an on-link supported resolver is prefilled; no gateway or public DNS address is guessed. You can edit the choice.
 4. Preview the scope, review the budget, confirm, then Start. Prefill and preview do not scan.
-5. Activity shows progress, cancellation and per-method outcomes. Inventory contains address candidates and evidence, not a claimed count of verified devices.
+5. Activity shows progress, cancellation and per-method outcomes. Systems prioritizes names, services and useful responses. All address attempts and raw evidence remain available; address views are not permanent verified-device identities.
 
 Methods: numeric IPv4 TCP connect probes; reverse DNS/PTR; mDNS service-type multicast; SSDP root-device multicast; limited legacy NetBIOS browse-master broadcast. No ping/ARP, IPv6, UDP port sweep, banner capture, URL fetching, credential attempt or automatic scheduled scan.
 
