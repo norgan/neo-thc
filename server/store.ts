@@ -91,14 +91,28 @@ export class Store {
         latest,
       };
     });
+    // Keep a bounded sample per address instead of repeatedly scanning all job-scoped candidates.
+    const claims = new Map<string, { count: number; sample: Asset[] }>();
     for (const asset of assets) {
-      const addresses = asset.latest?.identifiers.filter((item) => item.kind === 'ip' || item.kind === 'mac') ?? [];
-      for (const identifier of addresses) {
-        const peers = assets.filter((other) => other.id !== asset.id &&
-          other.latest?.identifiers.some((item) => item.kind === identifier.kind && item.value === identifier.value));
-        if (peers.length) {
+      const keys = new Set((asset.latest?.identifiers ?? [])
+        .filter((item) => item.kind === 'ip' || item.kind === 'mac').map((item) => item.kind + '/' + item.value));
+      for (const key of keys) {
+        const group = claims.get(key) ?? { count: 0, sample: [] };
+        group.count++;
+        if (group.sample.length < 4) group.sample.push(asset);
+        claims.set(key, group);
+      }
+    }
+    for (const asset of assets) {
+      for (const identifier of asset.latest?.identifiers ?? []) {
+        if (identifier.kind !== 'ip' && identifier.kind !== 'mac') continue;
+        const group = claims.get(identifier.kind + '/' + identifier.value)!;
+        const peerCount = group.count - 1;
+        const peers = group.sample.filter((other) => other.id !== asset.id).slice(0, 3);
+        if (peerCount) {
           asset.identityWarnings.push(identifier.kind + ' ' + identifier.value +
             ' also appears on ' + peers.map((other) => other.label).join(', ') +
+            (peerCount > 3 ? ' and ' + (peerCount - 3) + ' other entries' : '') +
             '; claims may be historical. Assets were not merged.');
         }
       }

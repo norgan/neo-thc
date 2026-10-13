@@ -161,7 +161,7 @@ function App() {
       {!snapshot && !loadError && <p role="status">Loading the local overview…</p>}
 
       {tab === 'Overview' && <>
-        <div className="section-title"><div><div className="eyebrow">A QUIETER VIEW OF YOUR LAB</div><h2>Start with what we know.</h2></div><Badge value="fixture-only" /></div>
+        <div className="section-title"><div><div className="eyebrow">A QUIETER VIEW OF YOUR LAB</div><h2>Start with what we know.</h2></div><Badge value={snapshot?.synthetic === false ? "network-and-fixture-evidence" : "fixture-only"} /></div>
         <div className="stats">
           <div><strong>{assets.length}</strong><span>inventory entries</span></div>
           <div><strong>{assets.filter((asset) => asset.freshness === 'fresh').length}</strong><span>fresh observations</span></div>

@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-**Passed:** all 12 desktop/mobile Chromium cases, including simulated Proxmox evidence, at source head d459b88e8e3cf5c5adeda26e13f8ca0f58fb9180 in [run 38334676302](https://github.com/norgan/neo-thc/actions/runs/38334676302) on 13 October 2026. The earlier 10-case baseline also passed; its desktop inventory and mobile evidence screenshots were visually inspected. Read current PR checks for later review corrections.
+**Passed:** all 16 desktop/mobile Chromium cases at source head 31cb874469725f147066ed7035f3bfc6012fc0ff in [run 38340290987](https://github.com/norgan/neo-thc/actions/runs/38340290987) on 13 October 2026 (51.1 seconds). Read current PR checks for subsequent review corrections. Earlier inventory/evidence screenshots were visually inspected; this run's discovery cases verify the intercepted controls programmatically.
 
 Pinned Microsoft Playwright 1.64.0 runs bundled Chromium on a GitHub-hosted Linux runner. The direct version and Node >=20 contract were checked against the [official package](https://github.com/microsoft/playwright/blob/v1.64.0/packages/playwright-test/package.json) and [release](https://github.com/microsoft/playwright/releases/tag/v1.64.0). Node 24 remains the application runtime.
 
@@ -16,9 +16,12 @@ Each case gets a fresh production server and temporary SQLite database. Cases ru
 2. Saved scope selection across reload, exclusions, and absence of excluded assets.
 3. Hold submission response while attempting repeated clicks; verify one job. Navigate during live collection, cancel, preserve inventory, and permit later work.
 4. Simulate API network failure in the browser. Preserve visible inventory with an explicit stale-data warning; retry and recover without submitting another job. Capture error-state screenshot.
-5. Named navigation, form labels, main/heading structure, live-status region, keyboard focus and activation, selected navigation state, no document overflow at either viewport, and explicit planned Connections/DNS boundaries.
+5. Named navigation, form labels, main/heading structure, live-status region, keyboard focus and activation, selected navigation state, no document overflow at either viewport, and explicit planned Connections/advanced-DNS boundaries.
 
 6. Opt in to the simulated Proxmox target, collect its five resources, verify four unknown/one stopped health projections and inspect permission-filtered provenance; capture evidence screenshot.
+
+7. Discovery is inactive with no preselected scope/methods; intercepted preview and submission validate explicit confirmation, invalidation after edits and repeated-click prevention. No real discovery job is submitted.
+8. Distinct mDNS/SSDP multicast and legacy NBNS broadcast labels, unselected link-wide approval and viewport overflow checks.
 
 Every case rejects uncaught browser errors and blocks/reports attempted external app requests. All app traffic is to the runner's 127.0.0.1 fixture API. Screenshots and traces contain only synthetic fixtures.
 

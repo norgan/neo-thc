@@ -112,6 +112,8 @@ export function parseSsdp(packet) {
   const usn=headers.get('usn');
   if(headers.get('st')!=='upnp:rootdevice' || typeof usn!=='string' ||
     !/^uuid:[A-Za-z0-9-]{8,80}(?:::upnp:rootdevice)?$/.test(usn)) throw new Error('packet');
+  const expiry = /^max-age\s*=\s*([0-9]{1,10})$/i.exec(headers.get('cache-control') ?? '');
+  if (!expiry || Number(expiry[1]) < 1) throw new Error('packet');
   // LOCATION and all other headers are intentionally dropped, never fetched or rendered.
-  return {claims:[usn],ttlMs:10000};
+  return {claims:[usn],ttlMs:Math.min(Number(expiry[1])*1000,10000)};
 }

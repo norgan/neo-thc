@@ -5,7 +5,7 @@ import type { DiscoveryInterface, DiscoveryPlan, DiscoveryProgress, ObservationI
 import { localInterfaces, parseDiscovery } from './discovery-scope.js';
 import { validateResult } from './discovery-result.mjs';
 
-export function discoveryObservation(raw: unknown, plan: DiscoveryPlan, jobId: string, synthetic = false): ObservationInput {
+export function discoveryObservation(raw: unknown, plan: DiscoveryPlan, jobId: string, synthetic = false, attemptStartedAt = Date.now()): ObservationInput {
   const value = validateResult(raw, plan);
   const replies = value.ports.some((port) => port.state === 'open' || port.state === 'closed') || value.mdns.length > 0 || value.nbns || value.ssdp.length > 0;
   const dns = value.dns.names.length ? ' Unverified PTR claims: ' + value.dns.names.join(', ') + '.' : ' PTR outcome: ' + value.dns.state + '.';
@@ -13,7 +13,9 @@ export function discoveryObservation(raw: unknown, plan: DiscoveryPlan, jobId: s
     id: randomUUID(), synthetic, subjectKey: jobId + '/' + value.address,
     label: 'Address candidate ' + value.address, kind: 'address-candidate',
     source: synthetic ? 'discovery-fixture-v1' : 'discovery-v1',
-    vantage: 'interface ' + plan.interface.address, observedAt: Date.now(), ttlMs: value.mdns.length || value.ssdp.length ? Math.min(value.ttlMs, 10000) : 60000,
+    vantage: 'interface ' + plan.interface.address,
+    // Conservative aggregate age: advertisements may wait behind later unicast probes.
+    observedAt: value.mdns.length || value.ssdp.length ? attemptStartedAt : Date.now(), ttlMs: value.mdns.length || value.ssdp.length ? Math.min(value.ttlMs, 10000) : 60000,
     status: 'unknown',
     note: (synthetic ? 'Synthetic discovery test fixture. ' : 'Real scoped network attempt. ') +
       (replies ? 'A network response or advertisement was observed; identity and health remain unverified.' : 'No direct response was observed; this is not a confirmed device.') +
@@ -41,12 +43,15 @@ export class DiscoveryCollector implements CollectorAdapter {
   readonly targets = [];
   private active: Worker | null = null;
   private disabled = false;
-  constructor(private readonly testMode = false, private readonly interfaces = localInterfaces) {}
+  constructor(private readonly testMode = false, private readonly interfaces = localInterfaces,
+    private readonly fixtureScenario: 'complete' | 'hold-after-first' | 'late-after-done' = 'complete') {}
   get problem() { return this.disabled ? 'Discovery worker cleanup failed. Restart before collecting again.' : null; }
 
   async collect(target: string, context: CollectionContext): Promise<ObservationInput[]> {
     context.signal.throwIfAborted();
     if (target !== 'discovery:ipv4' || !context.discovery || !context.jobId || this.active || this.disabled) throw new Error('Discovery unavailable');
+    if (!this.testMode && this.fixtureScenario !== 'complete') throw new Error('Invalid discovery fixture');
+    const attemptStartedAt = Date.now();
     const plan = context.discovery;
     const current = parseDiscovery({
       requestId: context.jobId, interfaceId: plan.interface.id, cidr: plan.cidr,
@@ -56,7 +61,7 @@ export class DiscoveryCollector implements CollectorAdapter {
     if (JSON.stringify(current) !== JSON.stringify(plan)) throw new Error('Discovery interface or scope changed');
     const attemptId = randomUUID();
     const worker = new Worker(new URL('./discovery-worker.mjs', import.meta.url), {
-      workerData: { v:1, attemptId, plan, testMode:this.testMode }, execArgv:[], env:{},
+      workerData: { v:1, attemptId, plan, testMode:this.testMode, fixtureScenario:this.fixtureScenario }, execArgv:[], env:{},
       resourceLimits:{maxOldGenerationSizeMb:32,maxYoungGenerationSizeMb:8,stackSizeMb:4},
       stdout:true, stderr:true,
     });
@@ -95,7 +100,7 @@ export class DiscoveryCollector implements CollectorAdapter {
             const result = validateResult(message.result, plan);
             if (seen.has(result.address)) throw new Error('duplicate');
             seen.add(result.address);
-            const observation = discoveryObservation(result, plan, context.jobId!, this.testMode);
+            const observation = discoveryObservation(result, plan, context.jobId!, this.testMode, attemptStartedAt);
             context.signal.throwIfAborted();
             if (context.onBatch) context.onBatch([observation]); else collected.push(observation);
           } else if (message.type === 'progress') {
@@ -109,7 +114,7 @@ export class DiscoveryCollector implements CollectorAdapter {
             context.onProgress?.({...previous});
           } else if (message.type === 'done') {
             if (Object.keys(message).some((key) => !['v','attemptId','type','failures'].includes(key)) || !Array.isArray(message.failures) ||
-              message.failures.length > 5 || message.failures.some((code) => !['packet_cap','socket_error','dns_error','deadline','collector_error'].includes(code))) throw new Error('completion');
+              message.failures.length > 6 || message.failures.some((code) => !['packet_cap','socket_error','dns_error','tcp_error','deadline','collector_error'].includes(code))) throw new Error('completion');
             void finish(message.failures.length || seen.size !== plan.targets.length ? new Error('Discovery incomplete') : null);
           } else throw new Error('type');
         } catch { void finish(new Error('Invalid discovery result')); }

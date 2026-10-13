@@ -6,9 +6,10 @@ if (!port) throw new Error('worker');
 /** @type {unknown} */ const input = workerData;
 if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('worker');
 const request = /** @type {Record<string,unknown>} */ (input);
-if (Object.keys(request).some((key) => !['v','attemptId','plan','testMode'].includes(key)) || request.v !== 1 ||
+if (Object.keys(request).some((key) => !['v','attemptId','plan','testMode','fixtureScenario'].includes(key)) || request.v !== 1 ||
   typeof request.attemptId !== 'string' || !/^[a-f0-9-]{36}$/.test(request.attemptId) ||
-  typeof request.testMode !== 'boolean' || process.execArgv.length || Object.keys(process.env).length) throw new Error('worker');
+  typeof request.testMode !== 'boolean' || !['complete','hold-after-first','late-after-done'].includes(String(request.fixtureScenario)) ||
+  (!request.testMode && request.fixtureScenario !== 'complete') || process.execArgv.length || Object.keys(process.env).length) throw new Error('worker');
 const plan = validateWirePlan(request.plan);
 const mock = request.testMode;
 const controller = new AbortController();
@@ -21,6 +22,21 @@ const progress = { addressesCompleted:0, totalAddresses:plan.targets.length, tcp
 /** @type {Map<string, {claims:string[],ttlMs:number}>} */ let nbns = new Map();
 /** @type {Map<string, {claims:string[],ttlMs:number}>} */ let ssdp = new Map();
 try {
+  // Internal lifecycle fixtures never open sockets and cannot be selected through the API or environment.
+  if (mock && request.fixtureScenario !== 'complete') {
+    const result = { address:plan.targets[0], ports:plan.ports.map((port) => ({port,state:'open'})),
+      dns:{state:plan.methods.includes('ptr')?'no_data':'not_requested',names:[]}, mdns:[],nbns:false,ssdp:[],ttlMs:60000 };
+    send({type:'batch',result});
+    progress.addressesCompleted=1;progress.tcpCompleted=plan.ports.length;progress.dnsCompleted=Number(plan.methods.includes('ptr'));
+    send({type:'progress',progress:{...progress}});
+    if (request.fixtureScenario === 'hold-after-first') await new Promise((resolve) => setTimeout(resolve,60000));
+    else {
+      send({type:'done',failures:['collector_error']});
+      // Queue a valid nonempty later candidate and progress immediately after terminal completion.
+      if (plan.targets[1]) send({type:'batch',result:{...result,address:plan.targets[1]}});
+      send({type:'progress',progress:{...progress,addressesCompleted:2,tcpCompleted:plan.ports.length*2}});
+    }
+  } else {
   await Promise.all((['mdns','nbns','ssdp']).map(async (method) => {
     if ((method !== 'mdns' && method !== 'nbns' && method !== 'ssdp') || !plan.methods.includes(method)) return;
     const result = mock
@@ -35,7 +51,7 @@ try {
     address, ports: /** @type {{port:number,state:string}[]} */ ([]),
     dns:{ state:'not_requested', names: /** @type {string[]} */ ([]) },
     mdns:mdns.get(address)?.claims ?? [], nbns:nbns.has(address), ssdp:ssdp.get(address)?.claims.slice(0,1) ?? [],
-    ttlMs:mdns.get(address)?.ttlMs ?? ssdp.get(address)?.ttlMs ?? 60000,
+    ttlMs:Math.min(mdns.get(address)?.ttlMs ?? 60000, ssdp.get(address)?.ttlMs ?? 60000),
     remaining:plan.ports.length + Number(plan.methods.includes('ptr')),
   }]));
   /** @param {string} address */
@@ -55,6 +71,7 @@ try {
       const state = states.get(address);
       if (!state) return;
       const result = mock ? (port === 443 ? 'open' : 'closed') : await tcpProbe(address, port, plan.interface.address, controller.signal);
+      if (result === 'error' && !failures.includes('tcp_error')) failures.push('tcp_error');
       state.ports.push({port,state:result}); state.remaining--; progress.tcpCompleted++; emit(address);
     }),
     pool(plan.methods.includes('ptr') ? plan.targets : [], 8, async (address) => {
@@ -68,5 +85,6 @@ try {
   ]);
   if (controller.signal.aborted) failures.push('deadline');
   send({ type:'done', failures:[...new Set(failures)] });
+  }
 } catch { send({ type:'done', failures:['collector_error'] }); }
 finally { clearTimeout(timer); }

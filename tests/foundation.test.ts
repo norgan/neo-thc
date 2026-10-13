@@ -266,3 +266,15 @@ test('background persistence failures are consumed and collection fails closed',
     await manager.shutdown();
   } finally { store.close(); }
 });
+
+test('many address claims retain separate assets with bounded ambiguity summaries',()=>{
+  const store=new Store();
+  try {
+    store.ingest(Array.from({length:100},(_,index)=>observation({id:'claim-'+index,subjectKey:'claim-'+index,label:'Candidate '+index})));
+    const assets=store.assets(10000);
+    assert.equal(assets.length,100);assert.equal(store.observationCount(),100);
+    assert.ok(assets.every((asset)=>asset.identityWarnings.length===1));
+    assert.ok(assets.every((asset)=>asset.identityWarnings[0].includes('and 96 other entries')));
+    assert.ok(assets.every((asset)=>asset.identityWarnings[0].length<250));
+  } finally {store.close();}
+});

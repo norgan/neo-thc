@@ -80,7 +80,7 @@ export function advertise(method, plan, signal, socketFactory = createSocket) {
       if (closed) return;
       received++;
       if (received >= 256) { capped = true; finish(); return; }
-      if (packet.length > 8192 || sender.port !== (method === 'mdns' ? 5353 : method === 'ssdp' ? 1900 : 137) ||
+      if (packet.length > 8192 || (method !== 'ssdp' && sender.port !== (method === 'mdns' ? 5353 : 137)) ||
         !allowed.has(sender.address) || found.has(sender.address)) return;
       try { found.set(sender.address, method === 'ssdp' ? parseSsdp(packet) : parseAdvertisement(method, packet, id)); } catch { /* Untrusted malformed replies are ignored. */ }
     });

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { observationAllowed, type CollectorAdapter, type CollectionContext } from './collector.js';
-import type { Job, JobSpec, JobStatus, ObservationInput } from '../shared/types.js';
+import type { Job, JobSpec, JobStatus, ObservationInput, DiscoveryProgress } from '../shared/types.js';
 import { MAX_JOBS, Store } from './store.js';
 
 export class RequestError extends Error {
@@ -79,7 +79,11 @@ async function collectWithDeadline(
       if (settled || child.signal.aborted || context.signal.aborted) return;
       context.onBatch?.(observations);
     };
-    Promise.resolve().then(() => adapter.collect(target, { ...context, signal: child.signal, onBatch }))
+    const onProgress = (progress: DiscoveryProgress) => {
+      if (settled || child.signal.aborted || context.signal.aborted) return;
+      context.onProgress?.(progress);
+    };
+    Promise.resolve().then(() => adapter.collect(target, { ...context, signal: child.signal, onBatch, onProgress }))
       .then((value) => finish(null, value), () => finish(new Error('Collector unavailable')));
   });
 }

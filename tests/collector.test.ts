@@ -6,7 +6,7 @@ import { IsolatedCollector, proxmoxObservations, type FixtureScenario } from '..
 import { mockTransport, parseVersion, parseInventory, runProxmox, PVE_OPERATIONS, PROXMOX_TARGET } from '../server/proxmox.mjs';
 import { FixtureCollector, type CollectorAdapter } from '../server/collector.js';
 import { Store } from '../server/store.js';
-import type { Job, ObservationInput } from '../shared/types.js';
+import type { Job, ObservationInput, DiscoveryProgress } from '../shared/types.js';
 
 const headers = { host: '127.0.0.1:4318', 'x-neo-client': 'local-ui' };
 const raw = (data: unknown) => JSON.stringify({ data });
@@ -238,12 +238,12 @@ test('excluded mock integration launches no worker and arbitrary operation field
 
 test('timed-out fallback batches cannot modify finished jobs or a newer job', async () => {
   const fixture = new FixtureCollector();
-  const late: { callback?: (items: ObservationInput[]) => void } = {};
+  const late: { callback?: (items: ObservationInput[]) => void; progress?: (value: DiscoveryProgress) => void } = {};
   const adapter: CollectorAdapter = {
     id: fixture.id, capabilities: fixture.capabilities, targets: fixture.targets,
     collect(target, context) {
       if (target === 'fixture:gateway') {
-        late.callback = context.onBatch;
+        late.callback = context.onBatch; late.progress = context.onProgress;
         return new Promise(() => {});
       }
       return fixture.collect(target, context);
@@ -262,6 +262,7 @@ test('timed-out fallback batches cannot modify finished jobs or a newer job', as
     const before = JSON.stringify({ jobs: store.jobs(), assets: store.assets() });
     assert.equal(typeof late.callback, 'function');
     late.callback!(await fixture.collect('fixture:gateway', context()));
+    late.progress?.({addressesCompleted:99,totalAddresses:99,tcpCompleted:99,dnsCompleted:99,datagramsSent:99});
     await delay(30);
     assert.equal(JSON.stringify({ jobs: store.jobs(), assets: store.assets() }), before);
     assert.equal(store.assets().length, 1);

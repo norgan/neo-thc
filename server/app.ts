@@ -50,7 +50,7 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   app.get<{ Params: { id: string } }>('/api/v1/assets/:id', async (request) => {
     const asset = store.assets().find((item) => item.id === request.params.id);
     if (!asset) throw new RequestError(404, 'Asset not found');
-    return { synthetic: true, asset, observations: store.observations(asset.id), observationLimit: 100 };
+    return { synthetic: asset.latest?.synthetic !== false, asset, observations: store.observations(asset.id), observationLimit: 100 };
   });
   app.get('/api/v1/jobs', async () => ({ jobs: store.jobs() }));
   app.get<{ Params: { id: string } }>('/api/v1/jobs/:id', async (request) => {

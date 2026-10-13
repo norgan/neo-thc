@@ -2,7 +2,9 @@
 
 ## Current status
 
-**Passed collector milestone in GitHub Actions:** locked dependency installation, server/browser typechecks, 26 unit tests, 12 desktop/mobile Chromium cases, production build and Linux production-startup smoke at [head d459b88e](https://github.com/norgan/neo-thc/actions/runs/38334676302), 13 October 2026. Logs report 26 passed/0 failed and 12 browser cases passed in 48.2 seconds. Smoke exercised the actual compiled Proxmox worker and graceful shutdown. A subsequent review correction guards late fallback batches and adds a regression (27 unit tests total); current PR checks are authoritative for that final head.
+**Passed discovery milestone in GitHub Actions:** locked installation, typechecks, 40 unit tests (0 failed), 16 desktop/mobile Chromium cases (51.1 seconds), production build and Linux startup smoke at [head 31cb874](https://github.com/norgan/neo-thc/actions/runs/38340290987), 13 October 2026. Smoke exercised compiled fixture/Proxmox and discovery workers, with discovery using its synthetic-only transport seam.
+
+Review corrections add expiry, real/synthetic detail labels, running cancellation, partial-result retention, hard deadline, queued late-message/slot-reuse and bounded ambiguity-summary checks (46 unit tests in source). Read the current PR checks for execution at that final head; the immutable recorded run predates those corrections.
 
 Historical foundation evidence follows:
 
@@ -68,7 +70,9 @@ tests/foundation.test.ts uses node:test, strict assertions, Fastify injection an
 12. Unknown thrown values, invalid status-code types and redacted diagnostic payloads
 13. Background SQLite write failures do not reject unhandled; collection fails closed and reports incomplete state
 
-The new tests/collector.test.ts adds fixed mock operations, version/schema gates, migration identity, permission-filtered empty/error responses, health/freshness semantics, source-mode worker startup, synchronous CPU and promise hangs, crash/early exit, forged/duplicate/late messages, cancellation, whole-job timeout, shutdown and scope exclusion checks. Production smoke also runs the emitted .mjs worker through npm start. These prove only the exercised trusted-fixture boundaries; no real transport or hostile-code sandbox exists.
+The new tests/collector.test.ts adds fixed mock operations, version/schema gates, migration identity, permission-filtered empty/error responses, health/freshness semantics, source-mode worker startup, synchronous CPU and promise hangs, crash/early exit, forged/duplicate/late messages, cancellation, whole-job timeout, shutdown and scope exclusion checks. Production smoke also runs the emitted .mjs worker through npm start. These prove the exercised trusted-fixture boundaries. The separate discovery transport is covered below; workers are not hostile-code sandboxes.
+
+tests/discovery.test.ts checks CIDR/interface/budget validation, fixed mDNS/NBNS/SSDP packet and bounded parser behavior, explicit resolver DNS and TCP on loopback fixtures, mocked multicast/broadcast destination/source binding, receive caps, advertised expiry and parent-owned age, real/synthetic provenance, shared-slot/idempotency controls, running-worker cancellation with retained partial data, hard deadlines and queued post-terminal messages. Test-only worker scenarios are constructor-only, unavailable through API/environment settings. No test broadcasts or multicasts on the CI network.
 
 ## Manual browser checks
 
@@ -90,7 +94,8 @@ Open http://127.0.0.1:4318 after build/start, or port 5173 using both developmen
 - Narrow 375 px viewport and desktop: no horizontal content overflow, controls usable, text legible.
 - Keyboard only: all tabs, forms, details, and cancellation reachable; focus visible; status not conveyed by color alone.
 - Scope selection survives reload. Storage-disabled browsing still works without preference persistence.
-- Connections and DNS remain visibly planned. The simulated Proxmox inventory is explicitly labelled; no credential fields or real probes appear.
+- Connections and advanced DNS diagnostics remain visibly planned. The simulated Proxmox inventory is labelled; Discovery alone offers explicit real IPv4 requests after preview and confirmation. No credential fields appear.
+- Discovery starts with empty scope and methods; setting changes invalidate preview and confirmation. Link-wide methods disclose the entire interface subnet. Review budget, start explicitly, cancel and inspect address-candidate evidence. Physical-network execution requires a separately chosen authorized scope and remains unverified.
 - Production asset paths and Content-Security-Policy allow the built JS/CSS to load.
 
 Record actual command outputs, environment versions, browser and failures before changing any remaining UNRUN status.

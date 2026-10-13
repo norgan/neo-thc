@@ -7,13 +7,13 @@ A local-first companion for understanding a home network and homelab through one
 
 ## Status: opt-in IPv4 discovery milestone
 
-This branch contains a TypeScript / Fastify / SQLite / React foundation. **The runtime baseline passed 27 unit tests, 12 desktop/mobile Chromium cases, typechecks, production build and startup smoke** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38334947206), source head 60c860e). That smoke includes the real compiled worker. Read current PR checks for subsequent documentation revisions. Physical-device QA, comprehensive accessibility review, real integrations and deployment remain unverified.
+This branch contains a TypeScript / Fastify / SQLite / React foundation. **The discovery milestone passed 40 unit tests, 16 desktop/mobile Chromium cases, typechecks, production build and startup smoke** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38340290987), source head 31cb874). Smoke exercises both compiled collector workers with synthetic transport. Review corrections add expiry, provenance and lifecycle regressions (46 unit tests in source); current PR checks are authoritative for the final head. Physical-network interoperability, Windows execution, comprehensive accessibility review and deployment remain unverified.
 
 The **Discovery** screen now implements bounded real IPv4 network requests, inactive until you choose an interface, CIDR and methods, preview the budget and confirm Start. Methods: TCP connect probes, explicit-resolver reverse DNS, mDNS service-type multicast, SSDP root-device multicast and a limited legacy NetBIOS browse-master broadcast. [Discovery scope and limits](docs/discovery.md) distinguish those mechanisms and their coverage.
 
 Fixtures remain available in Overview. Initial/live fixture actions still send no network traffic; synthetic entries are labelled separately from real address candidates. Discovery is initial-only. There is no ping, ARP scan, IPv6 discovery, credential attempt, real Proxmox API connection or automatic scan.
 
-This milestone's source adds transport/parser/scope tests and browser confirmation checks. Read current PR checks for its actual execution result; the earlier passing runtime baseline above does not by itself validate this new code. No user network has been scanned during development.
+CI checks transport/parser/scope behavior and browser confirmation using loopback or synthetic seams. No user network has been scanned during development.
 
 The [requirements](docs/requirements.md) retain the original product scope and now include the owner-approved deployment direction below. They describe the wider product, including features still planned.
 
@@ -39,6 +39,19 @@ Then open **http://127.0.0.1:4318**. Overview contains synthetic fixtures. For r
 
 These are local setup instructions. CI has checked the production startup path on Linux; your own environment still needs verification. Installation downloads npm packages. Direct and transitive dependencies are locked in the genuine npm-generated package-lock.json retrieved from the successful CI artifact, digest-checked and committed unchanged. Use `npm ci` to install that resolution. See [verification provenance](docs/testing.md).
 
+### Updating an existing Windows checkout
+
+Stop Neo with Ctrl+C, then from the existing repository directory in PowerShell:
+
+```powershell
+git pull --ff-only origin feat/initial-foundation
+npm.cmd ci
+npm.cmd run build
+npm.cmd start
+```
+
+This assumes that feature branch is already checked out and the working tree has no conflicting local edits. The database schema remains v1; no reset or migration is required, and prior observations remain. Preserve the local data directory. These commands were checked against the scripts, but Windows itself has not been executed in CI. The standalone smoke/browser lifecycle harnesses are Linux-only.
+
 ## Development
 
 Use two terminals, both at the repository root:
@@ -63,7 +76,7 @@ Run build before start, and run all commands from the root. Desktop/mobile Chrom
 
 ## What is included
 
-- Responsive Overview, Inventory, System and Activity views; explicitly planned Connections and DNS screens
+- Responsive Overview, Inventory, System, Activity and Discovery views; Connections and advanced DNS diagnostics remain planned
 - Empty/error/loading states; saved fixture selection in browser localStorage
 - Stable internal asset IDs, source-scoped identity, immutable observation history, address-reuse warnings
 - Evidence source, vantage, observation/receipt times, freshness, and separate current-health interpretation
@@ -91,10 +104,10 @@ Database: `data/neo.sqlite` by default; an explicit `NEO_DB_PATH` environment va
 ## Next milestones
 
 1. Extend accessibility, physical-device, cross-browser and local-platform verification.
-2. Review isolation and permission/version contracts before introducing any real transport.
+2. Review isolation, credentials and permission/version contracts before introducing real platform API transports.
 3. Design explicitly approved scopes and agentless UniFi / OPNsense / Proxmox adapters with local credential handling.
 4. Build evidence-backed dependencies, guarded DNS diagnostics and resumable recommendations that show executive-function burden.
 5. Assess QNAP / Nextcloud compatibility and optional endpoint agents only for remaining agentless capability gaps.
 6. Resolve split-mode API/storage/control-plane placement and review the collector trust boundary before implementing remote hosting.
 
-See [architecture and collector design](docs/architecture.md) and [verification checklist](docs/testing.md). The included CI workflow checks locked installation, types, synthetic tests, build and loopback production smoke behavior. No merge, deployment or real discovery is implied by this source publication.
+See [architecture and collector design](docs/architecture.md) and [verification checklist](docs/testing.md). The included CI workflow checks locked installation, types, fixture/loopback tests, build, production smoke and browser confirmation behavior. Publishing the source does not run discovery on the owner's network or deploy the app.

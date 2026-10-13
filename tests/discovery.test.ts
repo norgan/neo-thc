@@ -9,6 +9,7 @@ import { discoveryQuery, parseAdvertisement, readName, MDNS_NAME, SSDP_QUERY, pa
 import { tcpProbe, ptrProbe, advertise, pool } from '../server/discovery-network.mjs';
 import { validateResult } from '../server/discovery-result.mjs';
 import { discoveryObservation, DiscoveryCollector } from '../server/discovery-runner.js';
+import { Store } from '../server/store.js';
 import { createApp } from '../server/app.js';
 import type { DiscoveryInterface, ObservationInput, Job } from '../shared/types.js';
 
@@ -207,8 +208,14 @@ test('API discovery requires explicit confirmation, shares job slot and never ac
 });
 
 test('SSDP uses one fixed root-device request and discards arbitrary LOCATION metadata',async()=>{
-  const packet=Buffer.from('HTTP/1.1 200 OK\r\nST: upnp:rootdevice\r\nUSN: uuid:00000000-0000-0000-0000-000000000001::upnp:rootdevice\r\nLOCATION: http://198.51.100.8/secret\r\n\r\n');
+  const packet=Buffer.from('HTTP/1.1 200 OK\r\nST: upnp:rootdevice\r\nUSN: uuid:00000000-0000-0000-0000-000000000001::upnp:rootdevice\r\nCACHE-CONTROL: max-age=1\r\nLOCATION: http://198.51.100.8/secret\r\n\r\n');
   const parsed=parseSsdp(packet);
+  assert.equal(parsed.ttlMs,1000);
+  assert.equal(parseSsdp(Buffer.from(packet.toString().replace('max-age=1','max-age=1800'))).ttlMs,10000);
+  for(const expiry of ['max-age=0','max-age=-1','max-age=invalid','max-age=','invalid']) {
+    assert.throws(()=>parseSsdp(Buffer.from(packet.toString().replace('max-age=1',expiry))));
+  }
+  assert.throws(()=>parseSsdp(Buffer.from(packet.toString().replace('CACHE-CONTROL: max-age=1\r\n',''))));
   assert.ok(!JSON.stringify(parsed).includes('LOCATION')&&!JSON.stringify(parsed).includes('198.51.100'));
   assert.throws(()=>parseSsdp(Buffer.from('HTTP/1.1 200 OK\r\nST: other\r\n\r\n')));
   assert.throws(()=>parseSsdp(Buffer.concat([packet,Buffer.from('body')])));
@@ -220,7 +227,7 @@ test('SSDP uses one fixed root-device request and discards arbitrary LOCATION me
     setMulticastInterface(address:string){calls.push({source:address});}
     send(query:Buffer,port:number,address:string,callback:(error:null)=>void) {
       assert.deepEqual(query,SSDP_QUERY);calls.push({port,address});callback(null);
-      this.emit('message',packet,{port:1900,address:'192.0.2.20'});controller.abort();
+      this.emit('message',packet,{port:49152,address:'192.0.2.20'});controller.abort();
     }
     close(){calls.push('closed');}
   }
@@ -229,4 +236,83 @@ test('SSDP uses one fixed root-device request and discards arbitrary LOCATION me
   assert.equal(result.sent,1);assert.equal(result.found.size,1);
   assert.ok(calls.some((call)=>JSON.stringify(call)===JSON.stringify({port:1900,address:'239.255.255.250'})));
   assert.ok(calls.includes('closed'));
+});
+
+test('detail and inventory APIs never mark network-tagged evidence synthetic',async()=>{
+  const {app,store}=createApp({discoveryInterfaces:()=>[iface]});
+  try {
+    // Simulated network result tests the public provenance contract; no sockets are used.
+    store.ingest([discoveryObservation(row(),plan(),'provenance-test-job')]);
+    const assets=(await app.inject({url:'/api/v1/assets',headers})).json();
+    assert.equal(assets.synthetic,false);
+    const detail=(await app.inject({url:'/api/v1/assets/'+assets.assets[0].id,headers})).json();
+    assert.equal(detail.synthetic,false);assert.equal(detail.observations[0].synthetic,false);
+    assert.equal(detail.asset.latest.source,'discovery-v1');
+  } finally {await app.close();}
+});
+
+test('advertisement expiry is anchored to host attempt start, never delayed batch delivery',()=>{
+  const p=plan({cidr:iface.cidr,methods:['mdns','ssdp'],ports:[],linkScopeConfirmed:true});
+  const store=new Store();
+  try {
+    for(const ttlMs of [1000,10000]) {
+      const input={...row(),ports:[],mdns:['_http._tcp.local'],ssdp:['uuid:00000000-0000-0000-0000-000000000001::upnp:rootdevice'],ttlMs};
+      const observation=discoveryObservation(input,p,'delayed-'+ttlMs,false,1000);
+      assert.equal(observation.observedAt,1000);assert.equal(observation.ttlMs,ttlMs);
+      store.ingest([observation],31000);
+    }
+    assert.ok(store.assets(31000).every((asset)=>asset.freshness==='stale'&&asset.health==='unknown'));
+    assert.ok(store.assets(31000).every((asset)=>asset.latest!.receivedAt===31000&&asset.latest!.observedAt===1000));
+  } finally {store.close();}
+});
+
+test('running discovery cancellation preserves one partial batch and waits for slot cleanup',async()=>{
+  const collector=new DiscoveryCollector(true,()=>[iface],'hold-after-first');
+  const {app,store,jobs}=createApp({discoveryInterfaces:()=>[iface],discoveryAdapter:collector});
+  try {
+    const {spec}=parseDiscovery(settings({cidr:'192.0.2.0/30',confirmScope:true}),[iface],true);
+    const started=jobs.start('cancel-running-discovery',spec);
+    const deadline=Date.now()+5000;
+    while(store.observationCount()===0&&Date.now()<deadline)await delay(5);
+    assert.equal(store.observationCount(),1);assert.equal(store.job(started.id)!.status,'running');
+    jobs.cancel(started.id);jobs.cancel(started.id);
+    assert.throws(()=>jobs.start('while-worker-terminates',spec),/Another collection/);
+    const stopped=await terminal(()=>store.job(started.id));
+    assert.equal(stopped.status,'cancelled');assert.equal(stopped.observationsAdded,1);
+    const saved=JSON.stringify({job:store.job(started.id),assets:store.assets()});
+    await delay(80);
+    assert.equal(JSON.stringify({job:store.job(started.id),assets:store.assets()}),saved);
+    const later=jobs.start('fixture-after-discovery',{mode:'initial',scope:['fixture:nas'],exclusions:[],intervalMs:1000,maxCycles:1,maxDurationMs:5000});
+    assert.equal((await terminal(()=>store.job(later.id))).status,'completed');
+    assert.equal(store.assets().filter((asset)=>asset.latest!.source==='discovery-fixture-v1').length,1);
+    assert.equal(store.observationCount(),2);
+  } finally {await app.close();}
+});
+
+test('discovery hard deadline terminates pending worker before its slot can be reused',async()=>{
+  const p=plan({cidr:'192.0.2.0/30',ports:[443]});
+  const collector=new DiscoveryCollector(true,()=>[iface],'hold-after-first');
+  const accepted:ObservationInput[]=[];
+  const context={now:Date.now(),cycle:0,jobId:'deadline-discovery',discovery:p,timeoutMs:1000};
+  await assert.rejects(collector.collect('discovery:ipv4',{...context,signal:new AbortController().signal,onBatch:(items)=>accepted.push(...items)}),/deadline/);
+  assert.equal(accepted.length,1);assert.equal(collector.problem,null);
+  const controller=new AbortController();
+  await assert.rejects(collector.collect('discovery:ipv4',{...context,jobId:'after-deadline-discovery',signal:controller.signal,
+    onBatch:(items)=>{accepted.push(...items);controller.abort();}}),/cancelled/);
+  assert.equal(accepted.length,2);assert.equal(collector.problem,null);
+  await delay(40);assert.equal(accepted.length,2);
+});
+
+test('queued nonempty batches and progress after terminal discovery completion are ignored',async()=>{
+  const p=plan({cidr:'192.0.2.0/30',ports:[443]});
+  const collector=new DiscoveryCollector(true,()=>[iface],'late-after-done');
+  const accepted:ObservationInput[]=[];let progressCount=0;
+  for(const jobId of ['late-first-job','late-second-job']) {
+    await assert.rejects(collector.collect('discovery:ipv4',{now:Date.now(),cycle:0,jobId,discovery:p,signal:new AbortController().signal,
+      onBatch:(items)=>accepted.push(...items),onProgress:()=>{progressCount++;}}),/incomplete/);
+  }
+  await delay(40);
+  assert.equal(accepted.length,2);assert.equal(progressCount,2);
+  assert.ok(accepted.every((item)=>item.identifiers[0].value===p.targets[0]));
+  assert.notEqual(accepted[0].subjectKey,accepted[1].subjectKey);
 });

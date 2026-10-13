@@ -51,7 +51,7 @@ The NFS example reports only a synthetic NFS failure, ping success and SMB succe
 
 All routes are under /api/v1:
 
-- GET /health: process health and fixture-only designation
+- GET /health: process health and fixture-plus-opt-in-discovery designation
 - GET /snapshot: synthetic marker, assets, jobs and allowed fixture targets
 - GET /assets: projected inventory
 - GET /assets/:id: asset plus latest 100 evidence records
@@ -100,7 +100,7 @@ Agentless APIs/protocols are preferred; any endpoint agent must justify a missin
 The adapter seam is deliberately small: identity, advertised fixture capability, target descriptors and collect(target, context). Context includes an AbortSignal, observation timestamp, cycle, deadline and bounded-batch callback. There are no mutation, configuration, shell, remediation or credential methods.
 
 The fixed-worker foundation is described in [collector isolation](collector-isolation.md). Required before a real integration:
-1. Add a carefully reviewed real transport, with destination/TLS policy and operating-system isolation where needed. The Node worker is not a security sandbox.
+1. Add a carefully reviewed platform API transport, with credential/destination/TLS policy and operating-system isolation where needed. The Node worker is not a security sandbox.
 2. Bind authenticated source identity and permission/version discovery to registered integration policy; test against supported live platforms.
 3. Define explicit scopes, exclusions, protocols and destination allowlists; discovery never expands them.
 4. Verify per-product/version read-only operations. HTTP GET alone is insufficient, especially for OPNsense.
