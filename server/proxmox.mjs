@@ -77,6 +77,7 @@ export function parseInventory(operation, raw) {
     if (id !== (type === 'node' ? 'node/' + node : type + '/' + vmid)) return fail('schema');
     const templateValue = row.template ?? 0;
     if (templateValue !== 0 && templateValue !== 1) return fail('schema');
+    /** @type {Resource} */
     const item = {
       id, type, node, vmid,
       label: row.name === undefined || row.name === '' ? (type === 'node' ? node : type.toUpperCase() + ' ' + vmid) : text(row.name, 200),
