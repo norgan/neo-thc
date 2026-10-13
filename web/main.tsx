@@ -263,7 +263,7 @@ function App() {
           <div className="row"><h3>{job.spec.discovery ? 'Approved IPv4 discovery' : job.spec.mode === 'initial' ? 'Initial fixtures' : 'Live fixture updates'}</h3><Badge value={job.status} /></div>
           <p className="muted">{time(job.createdAt)} · {job.spec.scope.length - job.spec.exclusions.length} selected targets</p>
           <progress aria-label="Collection progress" value={job.discoveryProgress?.addressesCompleted ?? job.completedTargets} max={job.spec.discovery?.targets.length ?? job.totalTargets} />
-          {job.spec.discovery && <p>{job.discoveryProgress?.addressesCompleted ?? 0} / {job.spec.discovery.targets.length} address attempts · TCP {job.discoveryProgress?.tcpCompleted ?? 0}/{job.spec.discovery.tcpBudget} · PTR {job.discoveryProgress?.dnsCompleted ?? 0}/{job.spec.discovery.dnsBudget}. Address candidates are not a confirmed device count.</p>
+          {job.spec.discovery && <p>{job.discoveryProgress?.addressesCompleted ?? 0} / {job.spec.discovery.targets.length} address attempts · TCP {job.discoveryProgress?.tcpCompleted ?? 0}/{job.spec.discovery.tcpBudget} · PTR {job.discoveryProgress?.dnsCompleted ?? 0}/{job.spec.discovery.dnsBudget}. Address candidates are not a confirmed device count.</p>}
           <p>{job.completedTargets} / {job.totalTargets} target attempts · {job.cyclesCompleted} cycles · {job.observationsAdded} observations saved</p>
           {job.errors.map((error, index) => <p className="caution" key={index}>{error}</p>)}
           {activeJob(job) && <button disabled={busy} onClick={() => void cancel(job)}>Cancel collection</button>}

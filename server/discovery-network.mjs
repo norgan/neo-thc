@@ -45,7 +45,7 @@ export async function ptrProbe(address, server, localAddress, signal, createReso
   try {
     if (signal.aborted) return { state: 'error', names: [] };
     const names = await resolver.reverse(address);
-    return { state: 'answer', names: names.filter((name) => /^[a-zA-Z0-9._-]{1,253}\.?$/.test(name)).slice(0, 4) };
+    return { state: 'answer', names: names.filter((name) => /^[a-zA-Z0-9._-]{1,253}$/.test(name)).slice(0, 4) };
   } catch (error) {
     const code = error && typeof error === 'object' && 'code' in error ? error.code : '';
     return { state: code === 'ENOTFOUND' || code === 'ENODATA' ? 'no_data' : 'error', names: [] };
