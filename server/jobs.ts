@@ -1,0 +1,185 @@
+import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
+import type { CollectorAdapter, CollectionContext } from './collector.js';
+import type { Job, JobSpec, JobStatus, ObservationInput } from '../shared/types.js';
+import { MAX_JOBS, Store } from './store.js';
+
+export class RequestError extends Error {
+  constructor(readonly statusCode: number, message: string) { super(message); }
+}
+
+function object(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RequestError(400, 'Expected a JSON object');
+  return value as Record<string, unknown>;
+}
+
+export function parseSubmission(body: unknown, allowed: readonly string[]): { requestId: string; spec: JobSpec } {
+  const value = object(body);
+  const keys = ['requestId', 'mode', 'scope', 'exclusions', 'intervalMs', 'maxCycles', 'maxDurationMs'];
+  if (Object.keys(value).some((key) => !keys.includes(key))) throw new RequestError(400, 'Unknown submission field');
+  if (typeof value.requestId !== 'string' || !/^[a-zA-Z0-9-]{8,80}$/.test(value.requestId)) {
+    throw new RequestError(400, 'requestId must contain 8–80 letters, digits or hyphens');
+  }
+  if (value.mode !== 'initial' && value.mode !== 'live') throw new RequestError(400, 'Choose initial or live mode');
+  function targets(input: unknown, required: boolean): string[] {
+    if (!Array.isArray(input) || input.length > allowed.length || (required && input.length === 0) ||
+      input.some((item) => typeof item !== 'string' || !allowed.includes(item)) ||
+      new Set(input).size !== input.length) throw new RequestError(400, 'Choose unique fixture targets only');
+    return [...input as string[]].sort();
+  }
+  function integer(input: unknown, fallback: number, min: number, max: number): number {
+    const actual = input ?? fallback;
+    if (typeof actual !== 'number' || !Number.isInteger(actual) || actual < min || actual > max) {
+      throw new RequestError(400, 'Job limits are outside the supported bounds');
+    }
+    return actual;
+  }
+  const scope = targets(value.scope, true);
+  const exclusions = targets(value.exclusions ?? [], false);
+  if (exclusions.some((key) => !scope.includes(key))) throw new RequestError(400, 'Exclusions must belong to the selected scope');
+  if (scope.every((key) => exclusions.includes(key))) throw new RequestError(400, 'At least one target must remain');
+  const spec: JobSpec = {
+    mode: value.mode,
+    scope,
+    exclusions,
+    intervalMs: integer(value.intervalMs, 2_000, 1_000, 30_000),
+    maxCycles: integer(value.maxCycles, value.mode === 'initial' ? 1 : 5, 1, 60),
+    maxDurationMs: integer(value.maxDurationMs, 30_000, 1_000, 60_000),
+  };
+  if (spec.mode === 'initial' && spec.maxCycles !== 1) throw new RequestError(400, 'Initial mode performs exactly one cycle');
+  return { requestId: value.requestId, spec };
+}
+
+/** Bounds an async adapter call. Synchronous CPU loops require a future worker process. */
+async function collectWithDeadline(
+  adapter: CollectorAdapter, target: string, context: CollectionContext, timeoutMs: number,
+): Promise<ObservationInput[]> {
+  const child = new AbortController();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error: Error | null, value: ObservationInput[] = []) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      context.signal.removeEventListener('abort', onAbort);
+      if (error) reject(error); else resolve(value);
+    };
+    const onAbort = () => {
+      child.abort();
+      finish(new Error('Collection cancelled'));
+    };
+    const timer = setTimeout(() => {
+      child.abort();
+      finish(new Error('Collection deadline exceeded'));
+    }, timeoutMs);
+    context.signal.addEventListener('abort', onAbort, { once: true });
+    if (context.signal.aborted) { onAbort(); return; }
+    Promise.resolve().then(() => adapter.collect(target, { ...context, signal: child.signal }))
+      .then((value) => finish(null, value), () => finish(new Error('Collector unavailable')));
+  });
+}
+
+type Active = { job: Job; controller: AbortController; reason: JobStatus | null; done: Promise<void> };
+
+export class JobManager {
+  private active: Active | null = null;
+  private closing = false;
+
+  constructor(private readonly store: Store, private readonly adapter: CollectorAdapter, private readonly probeTimeoutMs = 750) {
+    for (const job of store.jobs()) {
+      if (job.status === 'queued' || job.status === 'running') {
+        store.saveJob({ ...job, status: 'interrupted', finishedAt: Date.now(),
+          errors: [...job.errors, 'Application stopped before this job finished. Partial results were retained.'] });
+      }
+    }
+  }
+
+  start(requestId: string, spec: JobSpec): Job {
+    if (this.closing) throw new RequestError(503, 'Application is shutting down');
+    const existing = this.store.jobByRequest(requestId);
+    if (existing) {
+      if (JSON.stringify(existing.spec) !== JSON.stringify(spec)) throw new RequestError(409, 'requestId already belongs to different job settings');
+      return existing;
+    }
+    if (this.active) throw new RequestError(409, 'Another collection is active. Cancel it or wait for it to finish.');
+    if (this.store.jobs().length >= MAX_JOBS) throw new RequestError(409, 'Demo job capacity reached. See the reset instructions.');
+    const targets = spec.scope.filter((target) => !spec.exclusions.includes(target));
+    const job: Job = {
+      id: randomUUID(), requestId, spec: structuredClone(spec), status: 'queued',
+      createdAt: Date.now(), startedAt: null, finishedAt: null,
+      completedTargets: 0, totalTargets: targets.length * spec.maxCycles,
+      cyclesCompleted: 0, observationsAdded: 0, errors: [],
+    };
+    this.store.saveJob(job);
+    const active: Active = { job, controller: new AbortController(), reason: null, done: Promise.resolve() };
+    this.active = active;
+    // Reserve the one available slot synchronously; run after the submission returns.
+    active.done = Promise.resolve().then(() => this.run(active, targets));
+    return structuredClone(job);
+  }
+
+  cancel(id: string): Job {
+    const job = this.store.job(id);
+    if (!job) throw new RequestError(404, 'Job not found');
+    if (this.active?.job.id === id) {
+      this.active.reason = 'cancelled';
+      this.active.controller.abort();
+    }
+    return this.store.job(id)!;
+  }
+
+  private async run(active: Active, targets: string[]): Promise<void> {
+    const job = active.job;
+    const signal = active.controller.signal;
+    job.status = 'running';
+    job.startedAt = Date.now();
+    this.store.saveJob(job);
+    const deadline = setTimeout(() => {
+      active.reason ??= 'timed_out';
+      active.controller.abort();
+    }, job.spec.maxDurationMs);
+    try {
+      for (let cycle = 0; cycle < job.spec.maxCycles; cycle++) {
+        for (const target of targets) {
+          signal.throwIfAborted();
+          try {
+            const observations = await collectWithDeadline(this.adapter, target,
+              { signal, now: Date.now(), cycle }, this.probeTimeoutMs);
+            signal.throwIfAborted();
+            // Fixed trusted fixture adapter only; future adapters need runtime schemas and isolation.
+            if (observations.length > 20 || observations.some((item) => item.subjectKey !== target || item.source !== this.adapter.id)) {
+              throw new Error('Adapter returned an invalid result');
+            }
+            job.observationsAdded += this.store.ingest(observations);
+          } catch {
+            if (signal.aborted) throw new Error('Job stopped');
+            if (job.errors.length < 20) job.errors.push('One fixture collection failed or timed out; prior evidence remains unchanged.');
+          }
+          job.completedTargets++;
+          this.store.saveJob(job);
+        }
+        job.cyclesCompleted++;
+        this.store.saveJob(job);
+        if (cycle + 1 < job.spec.maxCycles) await delay(job.spec.intervalMs, undefined, { signal });
+      }
+      job.status = job.errors.length ? 'failed' : 'completed';
+    } catch {
+      job.status = active.reason ?? 'failed';
+      if (!active.reason && job.errors.length < 20) job.errors.push('Collection stopped unexpectedly. Partial results were retained.');
+    } finally {
+      clearTimeout(deadline);
+      job.finishedAt = Date.now();
+      this.store.saveJob(job);
+      if (this.active === active) this.active = null;
+    }
+  }
+
+  async shutdown(): Promise<void> {
+    this.closing = true;
+    const active = this.active;
+    if (!active) return;
+    active.reason ??= 'interrupted';
+    active.controller.abort();
+    await active.done;
+  }
+}
