@@ -7,11 +7,17 @@ A local-first companion for understanding a home network and homelab through one
 
 ## Status: fixture foundation with passing automated checks
 
-This branch contains a TypeScript / Fastify / SQLite / React foundation. **The collector milestone passed 26 unit tests, 12 desktop/mobile Chromium cases, typechecks, production build and startup smoke** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38334676302), source head d459b88e). That smoke includes the real compiled worker. A subsequent review correction adds a late-batch regression (27 unit tests total); read current PR checks for the final head result. Physical-device QA, comprehensive accessibility review, real integrations and deployment remain unverified.
+This branch contains a TypeScript / Fastify / SQLite / React foundation. **The runtime baseline passed 27 unit tests, 12 desktop/mobile Chromium cases, typechecks, production build and startup smoke** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38334947206), source head 60c860e). That smoke includes the real compiled worker. Read current PR checks for subsequent documentation revisions. Physical-device QA, comprehensive accessibility review, real integrations and deployment remain unverified.
 
 All device data is synthetic. “Initial” performs one fixture pass; “live” periodically repeats fixture observations. Neither mode scans the network, queries DNS, connects to platforms, reads local network interfaces, or collects credentials.
 
-The original [requirements baseline](docs/requirements.md) is preserved. It describes the wider product, including features still planned.
+The [requirements](docs/requirements.md) retain the original product scope and now include the owner-approved deployment direction below. They describe the wider product, including features still planned.
+
+## Product direction: agentless first, two deployment modes
+
+Prefer agentless APIs and read-only protocols. Endpoint agents are optional, only for required capabilities unavailable agentlessly. A site collector may be installed alongside the UI, or remain on-premises while the interface is hosted remotely.
+
+**Only the colocated, loopback-only synthetic foundation is implemented today.** Split deployment is planned. Remote static UI hosting does not decide where the API, storage or control plane runs and does not authorize inventory uploads. Managed-system credentials stay local to the collector. Pairing, authenticated encrypted outbound communication, local scope enforcement, revocation and offline delivery need design and security review before implementation. See the [deployment decision record](docs/deployment-modes.md).
 
 ## Quick start
 
@@ -80,8 +86,9 @@ Database: `data/neo.sqlite` by default; an explicit `NEO_DB_PATH` environment va
 
 1. Extend accessibility, physical-device, cross-browser and local-platform verification.
 2. Review isolation and permission/version contracts before introducing any real transport.
-3. Design explicitly approved scopes and real UniFi / OPNsense / Proxmox adapters with secure credential handling.
+3. Design explicitly approved scopes and agentless UniFi / OPNsense / Proxmox adapters with local credential handling.
 4. Build evidence-backed dependencies, guarded DNS diagnostics and resumable recommendations that show executive-function burden.
-5. Assess QNAP / Nextcloud compatibility and optional endpoint-agent design.
+5. Assess QNAP / Nextcloud compatibility and optional endpoint agents only for remaining agentless capability gaps.
+6. Resolve split-mode API/storage/control-plane placement and review the collector trust boundary before implementing remote hosting.
 
 See [architecture and collector design](docs/architecture.md) and [verification checklist](docs/testing.md). The included CI workflow checks locked installation, types, synthetic tests, build and loopback production smoke behavior. No merge, deployment or real discovery is implied by this source publication.

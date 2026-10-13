@@ -19,6 +19,18 @@ GitHub Actions passed the collector milestone (26 unit tests, 12 desktop/mobile 
 - web/main.tsx: responsive inventory/evidence UI, explicit fixture controls, saved selection and planned-feature screens
 - scripts/smoke.mjs: bounded Linux CI check of npm start, production assets, fixture collection and clean shutdown
 
+## Approved deployment direction; implementation remains local
+
+Agentless collection is the default product direction: use permitted APIs and read-only protocols wherever possible. A site collector is an application component, not a mandatory per-device agent. Endpoint agents are optional only for capabilities unavailable agentlessly, with an explicit capability/privilege explanation.
+
+Two modes are intended:
+1. **Colocated:** collector, local API/storage and served interface installed together. The current fixture application is a local-only starting point for this mode.
+2. **Split:** collector stays on-premises; the interface is hosted remotely. This does not by itself choose a remote API, remote storage or a remote control plane.
+
+See [deployment modes and trust boundary](deployment-modes.md) for the decision record. Managed-system credentials stay at the collector. The proposed connection is collector-initiated, authenticated and encrypted, with explicit pairing/site identity and collector-enforced scopes. Any hosted scheduling would submit bounded authorized job requests, never arbitrary commands or scans. Offline buffering, backpressure, replay-safe reconnection, data recipients/retention and revocation must be designed and reviewed first.
+
+The current executable has no pairing, remote channel, remote authentication or endpoint-agent runtime. Its fixed loopback listener, Host/Origin checks and CSP remain unchanged; do not expose it or relax those guards to simulate split deployment.
+
 ## Identity and evidence
 
 Every newly encountered source + subjectKey gets an opaque internal UUID. IP/MAC values are evidence only. Repeated observations for a source-scoped key enrich the same asset; the same address on another key creates a separate asset. Latest claims shared across assets show an ambiguity warning, including the historical/current address reuse scenario. This is intentionally not automatic cross-source reconciliation.
@@ -77,6 +89,8 @@ The data directory is created with mode 0700 when newly created on supporting sy
 
 ## Future collectors and optional endpoint agent
 
+Agentless APIs/protocols are preferred; any endpoint agent must justify a missing capability rather than becoming the default. Site-collector placement is independent of that endpoint-agent choice.
+
 The adapter seam is deliberately small: identity, advertised fixture capability, target descriptors and collect(target, context). Context includes an AbortSignal, observation timestamp, cycle, deadline and bounded-batch callback. There are no mutation, configuration, shell, remediation or credential methods.
 
 The fixed-worker foundation is described in [collector isolation](collector-isolation.md). Required before a real integration:
@@ -85,8 +99,8 @@ The fixed-worker foundation is described in [collector isolation](collector-isol
 3. Define explicit scopes, exclusions, protocols and destination allowlists; discovery never expands them.
 4. Verify per-product/version read-only operations. HTTP GET alone is insufficient, especially for OPNsense.
 5. Keep encrypted/local secret references separate from inventory; redact all errors and logs and avoid secret-bearing browser payloads.
-6. Add trust, authentication, enrollment/revocation and replay protection before accepting a remote agent.
-7. An optional endpoint agent should report narrowly allowed local inventory/observations, use signed/versioned messages and bounded batches, and run without remote command/configuration capabilities.
+6. Implement the reviewed site pairing, trust/authentication, revocation, replay-safe delivery and local authorization policy before split deployment; these are separate from optional endpoint-agent enrollment.
+7. Only when an approved capability cannot be obtained agentlessly, an optional endpoint agent may report narrowly allowed local inventory/observations, using authenticated/versioned messages and bounded batches, without remote command/configuration capabilities.
 8. Keep agent deployment a later explicit decision. This repository contains no agent runtime, installer, enrollment, network listener for agents, or remote execution protocol.
 
 ## Executive-function support
