@@ -30,7 +30,7 @@ jobs:
       - name: Show runtime versions
         run: node --version && npm --version
       - name: Install dependencies
-        run: npm install --no-fund
+        run: npm ci --no-fund
       - name: Typecheck
         run: npm run typecheck
       - name: Test synthetic foundation
@@ -39,7 +39,7 @@ jobs:
         run: npm run build
       - name: Smoke test production startup and fixture API
         run: npm run smoke
-      - name: Preserve npm-generated lockfile
+      - name: Preserve tested dependency lockfile
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: generated-package-lock

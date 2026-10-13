@@ -2,23 +2,39 @@
 
 ## Current status
 
-**Passed in GitHub Actions:** dependency installation, server/browser typechecks, all 13 synthetic tests, and server/browser production build.
+**Passed in GitHub Actions:** dependency installation, server/browser typechecks, all 13 synthetic tests, server/browser production build, and Linux production-startup smoke.
 
-[Verified run 38331197087](https://github.com/norgan/neo-thc/actions/runs/38331197087), 13 October 2026, source head 1de403e03643f45bff64223fb4a73ed273e93bff. GitHub tested PR merge ref fe14e5c2ece5e5c955b6db06a791e459455781e6 against main 47439e3. Environment: Ubuntu 24.04.5, Node 24.21.0, npm 11.19.0. Tests: 13 passed, 0 failed/skipped. Build: Vite 7.3.7, 28 modules, emitted HTML/JS/CSS.
+[Verified run 38331806414](https://github.com/norgan/neo-thc/actions/runs/38331806414), 13 October 2026, source head 48beb6be37113498973eb3a9c840cc599ace6434. GitHub tested the PR merge ref against main 47439e3. Environment: Ubuntu 24.04.5, Node 24.21.0, npm 11.19.0. Tests: 13 passed, 0 failed/skipped.
 
-The install audited 77 resolved packages and reported 0 vulnerabilities. A separate npm audit command was not run. npm also warned about two esbuild install scripts lacking allowScripts entries; typechecks, tests and build still succeeded. No broad install-script approval was added.
+The separate smoke script starts the actual `npm start` command with an isolated temporary SQLite database. It verifies loopback health; production HTML, JavaScript and CSS with expected MIME types; one initial two-target fixture job; populated synthetic inventory; and process-group shutdown with the loopback listener closed. It has a 30-second exercise deadline, per-request timeouts, bounded readiness/job polling, and a separate five-second graceful cleanup window with failure on forced shutdown. It does not execute browser JavaScript or contact devices.
 
-**Still UNRUN:** production app startup, browser/UI/accessibility checks, real device integrations, real scans and deployment. This recorded run precedes the final strengthening of the storage-failure assertion; use the current PR checks to verify the latest head.
+Installation audited 77 resolved packages and reported 0 vulnerabilities. A separate `npm audit` command was not run. npm warned about two esbuild install scripts lacking allowScripts entries; typechecks, tests and build still succeeded. No broad install-script approval was added.
 
-Source was authored and published through the GitHub connector. No local executor or Work task was used. The owner explicitly requested GitHub Actions execution. CI has read-only repository permission, no configured repository-secret references, and performs only fixture checks. Source inspection and automated tests do not replace browser verification.
+**Still UNRUN:** interactive browser/UI/accessibility QA, non-Linux/local-machine verification, real device integrations, real scans and deployment. Read current PR checks for the latest commit; the recorded run above is immutable evidence, not a claim about every later commit.
 
-## First local verification
+Source was authored and published through the GitHub connector. No local executor or Work task ran repository code. The owner requested GitHub Actions testing. CI has read-only repository permission, no configured repository-secret references, and performs only fixture/loopback checks.
+
+## Authentic dependency lockfile
+
+The committed package-lock.json came from the npm install in the successful run above, not from manual reconstruction or local regeneration.
+
+- [Original artifact](https://github.com/norgan/neo-thc/actions/runs/38331806414/artifacts/11782753201): generated-package-lock, artifact ID 11782753201
+- ZIP SHA-256: 29190f5910b6fb09572508bcc6ac3617e680f6c78f95fa781eb22957b36f0540
+- Exact package-lock.json SHA-256: c5fda98e912a4a740aa866ce0c8a47933a0feec44b659a4a7218b02e51e4eba9
+- JSON size: 77,773 bytes; lockfile version 3
+- Archive inspection allowed exactly package-lock.json, enforced size/path bounds, and extracted only its bytes in memory.
+- Verified root dependencies, devDependencies, engine and every direct pinned version match package.json. All resolved download URLs point to registry.npmjs.org.
+- The file is committed byte-for-byte unchanged. CI now uses `npm ci` and preserves the tested lock as a seven-day artifact. Artifact expiry does not affect the committed copy.
+
+The only local data-processing command read and validated this authorized CI archive using trusted standard-library ZIP/JSON tools. It did not install, build, test or execute repository code.
+
+## Local verification commands
 
 Use Node 24.x from the repository root:
 
 ```sh
 node --version
-npm install
+npm ci
 npm run typecheck
 npm test
 npm run build
@@ -26,9 +42,9 @@ npm audit
 npm start
 ```
 
-The shorter aggregate `npm run check` runs typecheck, tests and build only; it does not include package audit or browser checks. It is normal for Node 24 to print an experimental SQLite warning.
+The shorter aggregate `npm run check` runs typecheck, tests and build only; it does not include the separate Linux-only `npm run smoke`, package audit or browser checks. It is normal for Node 24 to print an experimental SQLite warning.
 
-The first install generates package-lock.json. Inspect it and commit the real generated lockfile after the checks pass. Do not substitute a handcrafted lockfile or claim reproducibility before it exists. Inspect audit results and changes required to remediate them before updating pinned dependencies.
+Use the committed generated package-lock.json with npm ci. Dependency updates must regenerate and review the lock through an authorized execution environment. Inspect audit results and remediation changes before updating pins.
 
 ## Automated coverage
 

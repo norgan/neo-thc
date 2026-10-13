@@ -4,7 +4,7 @@
 
 A single local Node 24 process serves the Fastify API and production React files. SQLite records assets, immutable normalized observations, and job snapshots. A compiled-in FixtureCollector produces documented synthetic examples without any network or OS discovery calls. The browser polls a snapshot every two seconds without overlapping its own polls.
 
-The first GitHub Actions run passed typechecks, 13 synthetic tests and production build. See testing.md and current PR checks for exact scope and commit. Production startup and browser behavior remain unverified. The wider requirements remain in requirements.md.
+GitHub Actions passed typechecks, 13 synthetic tests, production build and a Linux production-startup/API smoke check. See testing.md and current PR checks for exact scope and commit. Interactive browser behavior remains unverified. The wider requirements remain in requirements.md.
 
 ### Main modules
 
@@ -15,6 +15,7 @@ The first GitHub Actions run passed typechecks, 13 synthetic tests and productio
 - server/app.ts: loopback-facing API and built static files; sanitized errors and browser-origin guards
 - server/main.ts: fixed loopback listener, database path and shutdown
 - web/main.tsx: responsive inventory/evidence UI, explicit fixture controls, saved selection and planned-feature screens
+- scripts/smoke.mjs: bounded Linux CI check of npm start, production assets, fixture collection and clean shutdown
 
 ## Identity and evidence
 
@@ -100,4 +101,4 @@ Official sources reviewed while authoring:
 - [React 19.2.0](https://github.com/facebook/react/releases/tag/v19.2.0): browser React / react-dom pair. This app does not use React Server Components.
 - [TypeScript 5.9.3](https://github.com/microsoft/TypeScript/releases/tag/v5.9.3) and [tsx 4.20.6](https://github.com/privatenumber/tsx/releases/tag/v4.20.6).
 
-Exact direct pins alone do not establish compatibility or safety. GitHub CI subsequently passed installation, typechecks, 13 synthetic tests and build; npm installation reported zero known vulnerabilities for its resolved set. Browser/startup checks and a committed generated lockfile remain outstanding.
+Exact direct pins alone do not establish compatibility or safety. GitHub CI subsequently passed installation, typechecks, 13 synthetic tests, build and production-startup smoke; npm installation reported zero known vulnerabilities for its resolved set. The authentic generated lockfile is committed and CI uses npm ci. Browser/accessibility checks remain outstanding.

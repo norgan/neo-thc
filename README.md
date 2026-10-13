@@ -7,7 +7,7 @@ A local-first companion for understanding a home network and homelab through one
 
 ## Status: fixture foundation with passing automated checks
 
-This branch contains an initial TypeScript / Fastify / SQLite / React implementation. **GitHub Actions passed installation, typechecks, all 13 synthetic tests, and production build** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38331197087), source head 1de403e). See the current PR checks for later commits. Browser QA, production startup and deployment remain UNRUN. Treat this as a testable foundation, not a verified end-to-end release.
+This branch contains an initial TypeScript / Fastify / SQLite / React implementation. **GitHub Actions passed installation, typechecks, all 13 synthetic tests, production build, and a production-startup smoke check** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38331806414), source head 48beb6b). The smoke check covers npm start, loopback health, built HTML/JS/CSS, initial fixture collection, inventory and graceful shutdown. See current PR checks for later commits. Browser QA and deployment remain UNRUN. Treat this as a testable foundation, not a verified end-to-end release.
 
 All device data is synthetic. “Initial” performs one fixture pass; “live” periodically repeats fixture observations. Neither mode scans the network, queries DNS, connects to platforms, reads local network interfaces, or collects credentials.
 
@@ -20,14 +20,14 @@ Prerequisite: **Node.js 24.x** with npm. The engine intentionally excludes other
 From the repository root:
 
 ```sh
-npm install
+npm ci
 npm run check
 npm start
 ```
 
 Then open **http://127.0.0.1:4318**. Select demo systems in Overview and choose **Collect initial fixtures**. Use Inventory / System for evidence and Activity for progress or cancellation.
 
-These are local setup instructions. CI has checked installation, types, tests and build; local startup still needs verification. Installation downloads npm packages. Exact direct versions are pinned; transitive resolution is not locked yet. No lockfile has been fabricated. After a successful install and review, commit the npm-generated lockfile before treating installs as reproducible. Use `npm install`, not `npm ci`, for this first setup.
+These are local setup instructions. CI has checked the production startup path on Linux; your own environment still needs verification. Installation downloads npm packages. Direct and transitive dependencies are locked in the genuine npm-generated package-lock.json retrieved from the successful CI artifact, digest-checked and committed unchanged. Use `npm ci` to install that resolution. See [verification provenance](docs/testing.md).
 
 ## Development
 
@@ -45,6 +45,7 @@ Commands:
 - `npm test`: Node test runner via tsx; isolated databases and API injection, no real probes
 - `npm run build`: TypeScript server output plus Vite browser build
 - `npm run check`: typecheck, tests, then build
+- `npm run smoke`: Linux-only bounded production-startup/API check, after build; uses a temporary database and port 4318
 - `npm start`: serve the built app and API on 127.0.0.1:4318
 
 Run build before start, and run all commands from the root. UI layout, keyboard behavior and repeated interactions still need the [manual checks](docs/testing.md).
@@ -73,10 +74,10 @@ Database: `data/neo.sqlite` by default; an explicit `NEO_DB_PATH` environment va
 
 ## Next milestones
 
-1. Complete startup/browser checks and commit a real generated lockfile. CI installation reported zero known vulnerabilities for its resolved dependency set; this is not a security guarantee.
+1. Complete browser, accessibility and local-platform checks. CI installation reported zero known vulnerabilities for its resolved dependency set; this is not a security guarantee.
 2. Add isolated collectors, runtime result schemas and version-aware read-only adapter allowlists.
 3. Implement explicitly approved scopes and first UniFi / OPNsense / Proxmox adapters.
 4. Build evidence-backed dependencies, guarded DNS diagnostics and resumable recommendations that show executive-function burden.
 5. Assess QNAP / Nextcloud compatibility and optional endpoint-agent design.
 
-See [architecture and collector design](docs/architecture.md) and [verification checklist](docs/testing.md). The included CI workflow checks only installation, types, synthetic tests and build. No merge, deployment or real discovery is implied by this source publication.
+See [architecture and collector design](docs/architecture.md) and [verification checklist](docs/testing.md). The included CI workflow checks locked installation, types, synthetic tests, build and loopback production smoke behavior. No merge, deployment or real discovery is implied by this source publication.
