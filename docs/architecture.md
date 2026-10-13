@@ -60,7 +60,7 @@ Initial mode requires one cycle. Live allows 1–60 cycles, 1–30 second interv
 
 An identical requestId and normalized settings returns the same persisted job (including after completion); different settings for that key return 409. There is one active slot, no unbounded waiting queue. Other concurrent submissions return 409. Each target call has a 750 ms deadline, then later targets continue; an unresolved promise cannot prevent cancellation or whole-job timeout. Adapter errors are reduced to a fixed message. Late results are ignored.
 
-Terminal states: completed, cancelled, timed_out, interrupted, failed. A target error makes the terminal job failed with partial results preserved. Shutdown aborts and awaits the active runner before closing SQLite. On restart, queued/running records become interrupted. A new request starts a new job; there is no implicit replay or live-job resumption.
+Terminal states: completed, cancelled, timed_out, interrupted, failed. A target error makes the terminal job failed with partial results preserved. Shutdown aborts and awaits the active runner before closing SQLite. Storage-write failures are consumed by the background runner, release the active slot, disable new collection, and expose a collectionError in health/snapshot responses. The UI warns that activity may be incomplete; Neo does not claim that an unsaved terminal state was persisted. On restart, queued/running records become interrupted. A new request starts a new job; there is no implicit replay or live-job resumption.
 
 Total target attempts, completed attempts, cycles and accepted observation counts are separate. A timeout/cancellation can leave progress below 100%, intentionally.
 

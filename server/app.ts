@@ -28,16 +28,18 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   });
 
   app.setErrorHandler((error, _request, reply) => {
+    const status = typeof error === 'object' && error !== null && 'statusCode' in error
+      ? error.statusCode : undefined;
     const code = error instanceof RequestError ? error.statusCode
-      : typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
+      : typeof status === 'number' && Number.isInteger(status) && status >= 400 && status < 500 ? status : 500;
     reply.code(code).send({ error: error instanceof RequestError ? error.message
       : code < 500 ? 'Invalid request' : 'Request failed. No diagnostic details are exposed.' });
   });
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'Not found' }));
 
-  app.get('/api/v1/health', async () => ({ status: 'ok', synthetic: true, collector: 'fixture-only' }));
+  app.get('/api/v1/health', async () => ({ status: jobs.problem ? 'degraded' : 'ok', synthetic: true, collector: 'fixture-only', collectionError: jobs.problem }));
   app.get('/api/v1/snapshot', async () => ({
-    synthetic: true, assets: store.assets(), jobs: store.jobs(), targets: adapter.targets,
+    synthetic: true, collectionError: jobs.problem, assets: store.assets(), jobs: store.jobs(), targets: adapter.targets,
   }));
   app.get('/api/v1/assets', async () => ({ synthetic: true, assets: store.assets() }));
   app.get<{ Params: { id: string } }>('/api/v1/assets/:id', async (request) => {

@@ -4,7 +4,7 @@
 
 **UNRUN: every install, test, typecheck, build, security audit, application start and browser check.**
 
-Source was authored and published through the GitHub connector. No local executor, Work task, CI workflow, real network scan, device connection or deployment was launched. Source inspection is not runtime verification.
+Source was authored and published through the GitHub connector. No local executor or Work task was used. At the owner's request, a GitHub Actions workflow now runs Node 24 installation, typechecks, synthetic tests and build for this PR. Read the current PR checks for its result; this document's verification status remains UNRUN until an actual completed run is recorded. No real scan, device connection or deployment is performed. Source inspection is not runtime verification.
 
 ## First local verification
 
@@ -39,6 +39,8 @@ tests/foundation.test.ts uses node:test, strict assertions, Fastify injection an
 9. An unresolved asynchronous adapter call, deadline isolation and later-target progress
 10. Graceful shutdown and rejection of further work
 11. Persistent asset identity and restart interruption recovery
+12. Unknown thrown values, invalid status-code types and redacted diagnostic payloads
+13. Background SQLite write failures do not reject unhandled; collection fails closed and reports incomplete state
 
 Tests do not prove hard isolation from synchronous CPU hangs. No real adapter exists. Timing checks allow bounded waiting but need actual execution for flakiness review.
 

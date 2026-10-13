@@ -84,6 +84,21 @@ type Active = { job: Job; controller: AbortController; reason: JobStatus | null;
 export class JobManager {
   private active: Active | null = null;
   private closing = false;
+  private storageFailed = false;
+
+  get problem(): string | null {
+    return this.storageFailed
+      ? 'Job state could not be saved. Collection is disabled; activity may be incomplete. Check local storage and restart Neo.'
+      : null;
+  }
+
+  private persist(job: Job): void {
+    try { this.store.saveJob(job); }
+    catch {
+      this.storageFailed = true;
+      throw new RequestError(503, 'Job state could not be saved. Check local storage and restart Neo.');
+    }
+  }
 
   constructor(private readonly store: Store, private readonly adapter: CollectorAdapter, private readonly probeTimeoutMs = 750) {
     for (const job of store.jobs()) {
@@ -96,6 +111,7 @@ export class JobManager {
 
   start(requestId: string, spec: JobSpec): Job {
     if (this.closing) throw new RequestError(503, 'Application is shutting down');
+    if (this.problem) throw new RequestError(503, this.problem);
     const existing = this.store.jobByRequest(requestId);
     if (existing) {
       if (JSON.stringify(existing.spec) !== JSON.stringify(spec)) throw new RequestError(409, 'requestId already belongs to different job settings');
@@ -110,11 +126,13 @@ export class JobManager {
       completedTargets: 0, totalTargets: targets.length * spec.maxCycles,
       cyclesCompleted: 0, observationsAdded: 0, errors: [],
     };
-    this.store.saveJob(job);
+    this.persist(job);
     const active: Active = { job, controller: new AbortController(), reason: null, done: Promise.resolve() };
     this.active = active;
     // Reserve the one available slot synchronously; run after the submission returns.
-    active.done = Promise.resolve().then(() => this.run(active, targets));
+    active.done = Promise.resolve().then(() => this.run(active, targets))
+      .catch(() => { this.storageFailed = true; })
+      .finally(() => { if (this.active === active) this.active = null; });
     return structuredClone(job);
   }
 
@@ -133,12 +151,12 @@ export class JobManager {
     const signal = active.controller.signal;
     job.status = 'running';
     job.startedAt = Date.now();
-    this.store.saveJob(job);
     const deadline = setTimeout(() => {
       active.reason ??= 'timed_out';
       active.controller.abort();
     }, job.spec.maxDurationMs);
     try {
+      this.persist(job);
       for (let cycle = 0; cycle < job.spec.maxCycles; cycle++) {
         for (const target of targets) {
           signal.throwIfAborted();
@@ -156,10 +174,10 @@ export class JobManager {
             if (job.errors.length < 20) job.errors.push('One fixture collection failed or timed out; prior evidence remains unchanged.');
           }
           job.completedTargets++;
-          this.store.saveJob(job);
+          this.persist(job);
         }
         job.cyclesCompleted++;
-        this.store.saveJob(job);
+        this.persist(job);
         if (cycle + 1 < job.spec.maxCycles) await delay(job.spec.intervalMs, undefined, { signal });
       }
       job.status = job.errors.length ? 'failed' : 'completed';
@@ -169,8 +187,8 @@ export class JobManager {
     } finally {
       clearTimeout(deadline);
       job.finishedAt = Date.now();
-      this.store.saveJob(job);
-      if (this.active === active) this.active = null;
+      try { this.persist(job); }
+      finally { if (this.active === active) this.active = null; }
     }
   }
 

@@ -69,6 +69,7 @@ export interface FixtureTarget {
 }
 export interface Snapshot {
   synthetic: true;
+  collectionError: string | null;
   assets: Asset[];
   jobs: Job[];
   targets: FixtureTarget[];

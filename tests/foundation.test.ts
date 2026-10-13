@@ -228,3 +228,40 @@ test('database reopening retains identity and recovers unfinished jobs as interr
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('unknown thrown values and adapter-style diagnostics are sanitized', async () => {
+  const { app } = createApp();
+  app.get('/api/v1/test-unknown', async () => { throw 'synthetic private diagnostic'; });
+  app.get('/api/v1/test-error', async () => { throw new Error('synthetic private diagnostic'); });
+  app.get('/api/v1/test-bad-status', async () => { throw { statusCode: '401', detail: 'synthetic private diagnostic' }; });
+  try {
+    for (const url of ['/api/v1/test-unknown', '/api/v1/test-error', '/api/v1/test-bad-status']) {
+      const response = await app.inject({ url, headers });
+      assert.equal(response.statusCode, 500);
+      assert.deepEqual(response.json(), { error: 'Request failed. No diagnostic details are exposed.' });
+      assert.ok(!response.body.includes('synthetic private diagnostic'));
+    }
+  } finally { await app.close(); }
+});
+
+test('background persistence failures are consumed and collection fails closed', async () => {
+  class FailingStore extends Store {
+    private writes = 0;
+    override saveJob(job: Job): void {
+      this.writes++;
+      if (this.writes >= 2) throw new Error('Synthetic SQLite write failure');
+      super.saveJob(job);
+    }
+  }
+  const store = new FailingStore();
+  const manager = new JobManager(store, new FixtureCollector());
+  try {
+    const parsed = parseSubmission(submission(), targets);
+    const job = manager.start(parsed.requestId, parsed.spec);
+    await delay(10);
+    await manager.shutdown();
+    assert.match(manager.problem ?? '', /could not be saved/);
+    assert.equal(store.job(job.id)!.status, 'queued', 'Do not claim a terminal state was persisted');
+    assert.throws(() => manager.start('request-after-failure', parsed.spec));
+  } finally { store.close(); }
+});

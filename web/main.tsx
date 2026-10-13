@@ -151,6 +151,7 @@ function App() {
       <div aria-live="polite">
         {loadError && <div className="error">{loadError} <button onClick={() => setRefresh((value) => value + 1)}>Retry</button></div>}
         {actionError && <div className="error">{actionError}</div>}
+        {snapshot?.collectionError && <div className="error">{snapshot.collectionError}</div>}
       </div>
       {!snapshot && !loadError && <p role="status">Loading the local overview…</p>}
 
@@ -163,7 +164,7 @@ function App() {
         </div>
         <div className="columns"><section className="panel">
           <h3>One small next step</h3><p>Choose demo systems, then collect one snapshot. Start periodic fixture updates when you want to explore changing freshness.</p>
-          <fieldset disabled={busy || !!running || !snapshot}>
+          <fieldset disabled={busy || !!running || !snapshot || !!snapshot.collectionError}>
             <legend>Explicit fixture scope</legend>
             {snapshot?.targets.map((target) => <label className="check" key={target.key}>
               <input type="checkbox" checked={scope.includes(target.key)} onChange={(event) => {

@@ -7,7 +7,7 @@ A local-first companion for understanding a home network and homelab through one
 
 ## Status: source-only fixture foundation
 
-This branch contains an initial TypeScript / Fastify / SQLite / React implementation and automated test source. **Nothing has been installed, compiled, run, browser-tested, or deployed during this authoring pass. Tests are UNRUN.** Treat this as a reviewable, testable draft, not a verified release.
+This branch contains an initial TypeScript / Fastify / SQLite / React implementation and automated test source. **The initial authoring pass ran no application code. A GitHub Actions check has now been added at the owner's request; see the PR checks for execution status. Browser testing and deployment remain UNRUN.** Treat this as a reviewable, testable draft, not a verified release.
 
 All device data is synthetic. “Initial” performs one fixture pass; “live” periodically repeats fixture observations. Neither mode scans the network, queries DNS, connects to platforms, reads local network interfaces, or collects credentials.
 
@@ -79,4 +79,4 @@ Database: `data/neo.sqlite` by default; an explicit `NEO_DB_PATH` environment va
 4. Build evidence-backed dependencies, guarded DNS diagnostics and resumable recommendations that show executive-function burden.
 5. Assess QNAP / Nextcloud compatibility and optional endpoint-agent design.
 
-See [architecture and collector design](docs/architecture.md) and [verification checklist](docs/testing.md). No merge, CI execution, deployment or real discovery is implied by this source publication.
+See [architecture and collector design](docs/architecture.md) and [verification checklist](docs/testing.md). The included CI workflow checks only installation, types, synthetic tests and build. No merge, deployment or real discovery is implied by this source publication.
