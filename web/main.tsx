@@ -135,7 +135,7 @@ function App() {
     {(tab==='Systems'||tab==='NOC')&&<section><div className="section-title"><div><h2>Your systems</h2><p>{systems.filter((system)=>system.responded).length} address views with observed responses</p></div><button onClick={openDiscovery}>Discover systems</button></div>
       <label className="field">Find a name, service or role<input value={search} onChange={(event)=>setSearch(event.target.value)} placeholder="Glances, file sharing, web…"/></label>
       <label className="check"><input type="checkbox" checked={showAttempts} onChange={(event)=>setShowAttempts(event.target.checked)}/>Show all address attempts, including unanswered ones ({systems.length})</label>
-      {!systems.length&&<div className="panel"><h3>No network observations yet</h3><p>Discover your network to find observed hostnames, services and likely roles.</p><button onClick={()=>setTab('Discovery')}>Set up discovery</button></div>}
+      {!systems.length&&<div className="panel"><h3>No network observations yet</h3><p>Discover your network to find observed hostnames, services and likely roles.</p><button onClick={openDiscovery}>Set up discovery</button></div>}
       {systems.length>0&&!visibleSystems.length&&<p>No matching responders. Unanswered attempts remain available using the checkbox above.</p>}
       <div className="semantic-grid">{visibleSystems.map((system)=>{
         const stats=snapshot?.stats?.find((item)=>item.assetId===system.currentAssetId);
@@ -174,7 +174,7 @@ function App() {
         <h3>Scan history</h3>{detail.observations.map((observation)=><details key={observation.id}><summary>{time(observation.observedAt)} · {observation.status}</summary><Evidence observation={observation}/></details>)}
       </details>}
     </section>}
-    {tab==='Activity'&&<section><div className="section-title"><h2>Collection activity</h2><button onClick={()=>setTab('Discovery')}>New discovery</button></div>
+    {tab==='Activity'&&<section><div className="section-title"><h2>Collection activity</h2><button onClick={openDiscovery}>New discovery</button></div>
       {!jobs.length&&<div className="panel">No discovery jobs yet. Choose and confirm a scope to begin.</div>}
       <div className="job-list">{jobs.map((job)=><article className="panel" key={job.id}>
         <div className="row"><h3>Approved IPv4 discovery</h3><Badge value={job.status}/></div>

@@ -159,3 +159,12 @@ test('cancelled HTTP enrichment retains base evidence and holds the one job slot
     assert.equal(jobs.busy,false);assert.equal(store.stats().length,1);
   }finally{await jobs.shutdown();store.close();}
 });
+
+test('TXT protocol key is first-wins including missing/empty values and uses exact ASCII value bytes',()=>{
+  const query=glancesQuestion(instance,16,125);
+  for(const [data,expected] of [[txt('protocol','protocol=rest'),'unknown'],[txt('protocol=','protocol=rest'),'unknown'],
+    [txt('PrOtOcOl=rpc','protocol=rest'),'rpc'],[Buffer.concat([Buffer.from([13]),Buffer.from('protocol=r'),Buffer.from([0xe5]),Buffer.from('st')]),'unknown']] as const){
+    const parsed=parseGlancesDns(packet(query,[rr(instance,16,data)]),instance,16,125);
+    assert.equal((parsed[0].value as {protocol:string}).protocol,expected);
+  }
+});

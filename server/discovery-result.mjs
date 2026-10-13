@@ -45,8 +45,8 @@ export function validateWirePlan(value) {
     plan.ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65535) ||
     plan.targets.length * plan.ports.length > 16384 || !Array.isArray(plan.methods) || !plan.methods.length ||
     plan.methods.some((method) => !['tcp','ptr','mdns','nbns','ssdp'].includes(method)) ||
-    (plan.tcpConcurrency!==undefined&&![8,16,32].includes(plan.tcpConcurrency))||
-    (plan.maxDurationMs!==undefined&&![60000,120000,240000,480000].includes(plan.maxDurationMs))||
+    (plan.tcpConcurrency!==undefined&&(typeof plan.tcpConcurrency!=='number'||![8,16,32].includes(plan.tcpConcurrency)))||
+    (plan.maxDurationMs!==undefined&&(typeof plan.maxDurationMs!=='number'||![60000,120000,240000,480000].includes(plan.maxDurationMs)))||
     (plan.resolver !== null && (typeof plan.resolver !== 'string' || !isIPv4(plan.resolver)))) throw new Error('schema');
   return /** @type {import('../shared/types.js').DiscoveryPlan} */ (/** @type {unknown} */ (plan));
 }

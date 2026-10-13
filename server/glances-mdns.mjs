@@ -73,9 +73,11 @@ export function parseGlancesDns(packet,question,type,id){
         while(position<end){
           const size=packet[position++];if(position+size>end||++strings>32)throw new Error('dns_txt');
           const text=packet.subarray(position,position+size);position+=size;
-          const split=text.indexOf(61);
-          if(!protocols.length&&split>=0&&text.subarray(0,split).equals(Buffer.from(text.subarray(0,split).toString('ascii')))&&text.subarray(0,split).toString('ascii').toLowerCase()==='protocol')
-            protocols.push(text.subarray(split+1).toString('ascii'));
+          const split=text.indexOf(61),key=split<0?text:text.subarray(0,split);
+          if(!protocols.length&&key.equals(Buffer.from(key.toString('ascii')))&&key.toString('ascii').toLowerCase()==='protocol'){
+            const raw=split<0?Buffer.alloc(0):text.subarray(split+1);
+            protocols.push(raw.equals(Buffer.from('rest'))?'rest':raw.equals(Buffer.from('rpc'))?'rpc':'unknown');
+          }
         }
         const unique=[...new Set(protocols)];
         value={protocol:unique.length===1&&['rest','rpc'].includes(unique[0])?unique[0]:'unknown',conflict:unique.length>1};

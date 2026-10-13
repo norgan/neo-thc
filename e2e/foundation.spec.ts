@@ -209,3 +209,60 @@ test('an unavailable or mismatched API disables stats access from a cached selec
   mode='ready';await page.getByRole('button',{name:'Retry',exact:true}).click();
   await expect(page.getByRole('button',{name:'Review stats access'})).toBeEnabled();
 });
+
+test('discovery is a secondary modal with focus, preserved edits and Back/Forward without scanning',async({page})=>{
+  let submissions=0;
+  await page.route('**/api/v1/discovery/jobs',(route)=>{submissions++;return route.abort();});
+  await options(page);await page.goto('/');
+  const opener=page.getByRole('button',{name:'Add or rescan systems',exact:true});
+  await opener.click();const dialog=page.getByRole('dialog',{name:'Add or rescan systems'});
+  await expect(page.getByRole('button',{name:'Close discovery'})).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  expect(await dialog.evaluate((element)=>element.contains(document.activeElement))).toBe(true);
+  await page.getByRole('combobox',{name:'Source interface'}).selectOption(iface.id);
+  await page.getByRole('textbox',{name:'Approved IPv4 CIDR'}).fill('192.0.2.0/28');
+  await page.keyboard.press('Escape');await expect(dialog).not.toBeVisible();await expect(opener).toBeFocused();
+  await opener.click();await expect(page.getByRole('textbox',{name:'Approved IPv4 CIDR'})).toHaveValue('192.0.2.0/28');
+  await page.goBack();await expect(dialog).not.toBeVisible();
+  await page.goForward();await expect(dialog).toBeVisible();
+  expect(submissions).toBe(0);
+});
+test('common profile and automatic existing Glances are covered by one explicit job consent',async({page})=>{
+  let submissions=0;
+  await page.route('**/api/v1/discovery/preview',(route)=>{
+    const body=route.request().postDataJSON();
+    expect(body.ports).toHaveLength(48);expect(body.glancesScheme).toBe('https');expect(body.tcpAttemptLimit).toBe(16384);
+    return route.fulfill({json:{plan:{...plan,ports:body.ports,tcpBudget:12144,tcpConcurrency:32,maxDurationMs:240000,
+      glances:{scheme:'https',maxEndpoints:2,maxQueries:7,maxRequests:12,resolveMs:8000}}}});
+  });
+  await page.route('**/api/v1/discovery/jobs',(route)=>{submissions++;const body=route.request().postDataJSON();expect(body.confirmScope).toBe(true);expect(body.glancesScheme).toBe('https');return route.fulfill({json:{job:job()}});});
+  await setup(page);
+  await page.getByRole('checkbox',{name:'TCP connect port probes',exact:true}).check();
+  await expect(page.getByRole('combobox',{name:'TCP port profile'})).toHaveValue('common');
+  await expect(page.getByText(/253 targets × 48 unique ports = 12144 TCP attempts/)).toBeVisible();
+  const automatic=page.getByRole('checkbox',{name:'Read existing Glances REST stats automatically'});
+  await expect(automatic).not.toBeChecked();await automatic.check();
+  await page.getByRole('combobox',{name:'Automatic stats scheme'}).selectOption('https');
+  await expect(page.getByRole('button',{name:'Preview discovery'})).toBeDisabled();
+  await page.getByRole('checkbox',{name:/I approve link-wide transmission/}).check();
+  await page.getByRole('button',{name:'Preview discovery'}).click();
+  await expect(page.getByText('Automatic existing Glances: HTTPS',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Start approved discovery'})).toBeDisabled();
+  await page.getByRole('checkbox',{name:'I confirm this exact scope and these network methods.'}).check();
+  await page.getByRole('button',{name:'Start approved discovery'}).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();expect(submissions).toBe(1);
+});
+test('NOC capacity attention and Network separate real scopes from service evidence',async({page},info)=>{
+  const stats={id:'capacity-snapshot',assetId:'qa-asset',source:'glances-api-v4',sampledAt:Date.now()-120000,cpuPercent:null,memory:null,
+    filesystems:[{mount:'/',percent:97.2,sizeBytes:1000,usedBytes:972,freeBytes:28}],status:'partial'};
+  await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:{...snapshot([asset],[job('completed')]),stats:[stats]}}));
+  await page.goto('/');
+  await expect(page.getByText(/97.2% used/)).toBeVisible();await expect(page.getByText(/older snapshot; refresh to confirm/)).toBeVisible();
+  await screenshot(page,info,'noc-capacity');
+  await nav(page,'Network').click();
+  await expect(page.getByRole('heading',{name:'Interfaces and scanned scopes'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Delivered services'})).toBeVisible();
+  await expect(page.getByText(/infrastructure\/compute classification unknown/)).toBeVisible();
+  await expect(page.getByText(/No topology or dependency is inferred/)).toBeVisible();
+  await screenshot(page,info,'network-services');await noOverflow(page);
+});
