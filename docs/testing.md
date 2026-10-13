@@ -1,3 +1,7 @@
+## Real-only correction under test
+
+Current PR checks apply to the real-discovery-v2 correction. Tests now cover preserved real records with non-destructively hidden legacy samples, real-only capacity/collision handling, system CIDR/DNS prefill, exact port budgets, visible form locks and structured partial outcomes. Browser cases were rewritten for the normal real-only UI. Production smoke executes the actual compiled discovery TCP worker against a loopback listener and confirms fixture POST routes are absent. No LAN scan is executed in CI. Historical verification below describes earlier code, not the current UI.
+
 # Verification checklist
 
 ## Current status

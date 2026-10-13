@@ -4,10 +4,17 @@ import { createSocket } from 'node:dgram';
 import { randomInt } from 'node:crypto';
 import { discoveryQuery, parseAdvertisement, SSDP_QUERY, parseSsdp } from './discovery-protocols.mjs';
 
+/** @param {unknown} error @returns {import('../shared/types.js').DiscoveryIssue} */
+export function networkIssue(error) {
+  const code=error&&typeof error==='object'&&'code' in error?error.code:'';
+  return code==='EACCES'||code==='EPERM'?'access_denied':code==='EADDRNOTAVAIL'||code==='EADDRINUSE'?'source_unavailable':
+    code==='ENETUNREACH'||code==='EHOSTUNREACH'?'network_unreachable':code==='ETIMEOUT'||code==='ETIMEDOUT'||code==='ECANCELLED'?'timeout':
+    code==='EREFUSED'||code==='ECONNREFUSED'?'refused':'io_error';
+}
 /** @typedef {'open'|'closed'|'timeout'|'unreachable'|'error'} PortState */
 /** @param {string} address @param {number} port @param {string} localAddress @param {AbortSignal} signal
- * @param {typeof createConnection} connect */
-export function tcpProbe(address, port, localAddress, signal, connect = createConnection) {
+ * @param {typeof createConnection} connect @param {(issue:import('../shared/types.js').DiscoveryIssue)=>void} onIssue */
+export function tcpProbe(address, port, localAddress, signal, connect = createConnection, onIssue = () => {}) {
   /** @returns {Promise<PortState>} */
   const run = () => new Promise((resolve) => {
     if (signal.aborted) { resolve('error'); return; }
@@ -27,6 +34,7 @@ export function tcpProbe(address, port, localAddress, signal, connect = createCo
     socket.once('connect', () => finish('open'));
     socket.once('error', (error) => {
       const code = 'code' in error ? error.code : '';
+      if (!['ECONNREFUSED','EHOSTUNREACH','ENETUNREACH'].includes(String(code))) onIssue(networkIssue(error));
       finish(code === 'ECONNREFUSED' ? 'closed' : code === 'EHOSTUNREACH' || code === 'ENETUNREACH' ? 'unreachable' : 'error');
     });
     // No application bytes, banner reads or protocol handshakes.
@@ -48,7 +56,7 @@ export async function ptrProbe(address, server, localAddress, signal, createReso
     return { state: 'answer', names: names.filter((name) => /^[a-zA-Z0-9._-]{1,253}$/.test(name)).slice(0, 4) };
   } catch (error) {
     const code = error && typeof error === 'object' && 'code' in error ? error.code : '';
-    return { state: code === 'ENOTFOUND' || code === 'ENODATA' ? 'no_data' : 'error', names: [] };
+    return code === 'ENOTFOUND' || code === 'ENODATA' ? {state:'no_data',names:[]} : {state:'error',names:[],issue:networkIssue(error)};
   } finally {
     clearTimeout(timer); signal.removeEventListener('abort', abort); resolver.cancel();
   }
@@ -58,12 +66,13 @@ export async function ptrProbe(address, server, localAddress, signal, createReso
  * @param {import('../shared/types.js').DiscoveryPlan} plan
  * @param {AbortSignal} signal
  * @param {typeof createSocket} socketFactory
- * @returns {Promise<{found: Map<string, {claims:string[], ttlMs:number}>, sent:number, received:number, capped:boolean, failed:boolean}>}
+ * @returns {Promise<{found: Map<string, {claims:string[], ttlMs:number}>, sent:number, received:number, capped:boolean, failed:boolean, issue:import('../shared/types.js').DiscoveryIssue|null}>}
  */
 export function advertise(method, plan, signal, socketFactory = createSocket) {
   /** @type {Map<string, {claims: string[], ttlMs: number}>} */ const found = new Map();
   return new Promise((resolve) => {
     const socket = socketFactory('udp4');
+    /** @type {import('../shared/types.js').DiscoveryIssue|null} */ let issue=null;
     let closed = false, received = 0, sent = 0, capped = false, failed = false;
     const id = randomInt(65536);
     const allowed = new Set(plan.targets);
@@ -71,11 +80,11 @@ export function advertise(method, plan, signal, socketFactory = createSocket) {
       if (closed) return; closed = true;
       clearTimeout(timer); signal.removeEventListener('abort', finish);
       try { socket.close(); } catch { /* Not bound yet. */ }
-      resolve({ found, sent, received, capped, failed });
+      resolve({ found, sent, received, capped, failed, issue });
     };
     const timer = setTimeout(finish, 2000);
     signal.addEventListener('abort', finish, { once: true });
-    socket.on('error', () => { failed = true; finish(); });
+    socket.on('error', (error) => { failed = true; issue=networkIssue(error); finish(); });
     socket.on('message', (packet, sender) => {
       if (closed) return;
       received++;
@@ -101,9 +110,9 @@ export function advertise(method, plan, signal, socketFactory = createSocket) {
         }
         if (!isIPv4(destination)) throw new Error('destination');
         socket.send(method === 'ssdp' ? SSDP_QUERY : discoveryQuery(method, id), method === 'mdns' ? 5353 : method === 'ssdp' ? 1900 : 137, destination, (error) => {
-          if (error) { failed = true; finish(); } else sent++;
+          if (error) { failed = true; issue=networkIssue(error); finish(); } else sent++;
         });
-      } catch { failed = true; finish(); }
+      } catch(error) { failed = true; issue=networkIssue(error); finish(); }
     });
     if (signal.aborted) finish();
   });

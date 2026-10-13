@@ -6,42 +6,32 @@ if (!port) throw new Error('worker');
 /** @type {unknown} */ const input = workerData;
 if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('worker');
 const request = /** @type {Record<string,unknown>} */ (input);
-if (Object.keys(request).some((key) => !['v','attemptId','plan','testMode','fixtureScenario'].includes(key)) || request.v !== 1 ||
+if (Object.keys(request).some((key) => !['v','attemptId','plan'].includes(key)) || request.v !== 1 ||
   typeof request.attemptId !== 'string' || !/^[a-f0-9-]{36}$/.test(request.attemptId) ||
-  typeof request.testMode !== 'boolean' || !['complete','hold-after-first','late-after-done'].includes(String(request.fixtureScenario)) ||
-  (!request.testMode && request.fixtureScenario !== 'complete') || process.execArgv.length || Object.keys(process.env).length) throw new Error('worker');
+  process.execArgv.length || Object.keys(process.env).length) throw new Error('worker');
 const plan = validateWirePlan(request.plan);
-const mock = request.testMode;
 const controller = new AbortController();
 const timer = setTimeout(() => controller.abort(), 55000);
 /** @param {Record<string,unknown>} message */
 const send = (message) => port.postMessage(JSON.stringify({ v:1, attemptId:request.attemptId, ...message }));
 const progress = { addressesCompleted:0, totalAddresses:plan.targets.length, tcpCompleted:0, dnsCompleted:0, datagramsSent:0 };
 /** @type {string[]} */ const failures = [];
+const startedAt=Date.now();
+/** @type {Map<import('../shared/types.js').DiscoveryMethod,import('../shared/types.js').DiscoveryOutcome>} */
+const outcomes=new Map(plan.methods.map((method)=>[method,{method,attempted:0,completed:0,responses:0,durationMs:0,issues:[]} ]));
 /** @type {Map<string, {claims:string[],ttlMs:number}>} */ let mdns = new Map();
 /** @type {Map<string, {claims:string[],ttlMs:number}>} */ let nbns = new Map();
 /** @type {Map<string, {claims:string[],ttlMs:number}>} */ let ssdp = new Map();
 try {
-  // Internal lifecycle fixtures never open sockets and cannot be selected through the API or environment.
-  if (mock && request.fixtureScenario !== 'complete') {
-    const result = { address:plan.targets[0], ports:plan.ports.map((port) => ({port,state:'open'})),
-      dns:{state:plan.methods.includes('ptr')?'no_data':'not_requested',names:[]}, mdns:[],nbns:false,ssdp:[],ttlMs:60000 };
-    send({type:'batch',result});
-    progress.addressesCompleted=1;progress.tcpCompleted=plan.ports.length;progress.dnsCompleted=Number(plan.methods.includes('ptr'));
-    send({type:'progress',progress:{...progress}});
-    if (request.fixtureScenario === 'hold-after-first') await new Promise((resolve) => setTimeout(resolve,60000));
-    else {
-      send({type:'done',failures:['collector_error']});
-      // Queue a valid nonempty later candidate and progress immediately after terminal completion.
-      if (plan.targets[1]) send({type:'batch',result:{...result,address:plan.targets[1]}});
-      send({type:'progress',progress:{...progress,addressesCompleted:2,tcpCompleted:plan.ports.length*2}});
-    }
-  } else {
   await Promise.all((['mdns','nbns','ssdp']).map(async (method) => {
     if ((method !== 'mdns' && method !== 'nbns' && method !== 'ssdp') || !plan.methods.includes(method)) return;
-    const result = mock
-      ? { found:new Map([[plan.targets[0], { claims:method === 'mdns' ? ['_http._tcp.local'] : method === 'ssdp' ? ['uuid:00000000-0000-0000-0000-000000000001::upnp:rootdevice'] : ['browse-master'], ttlMs:10000 }]]), sent:1, capped:false, failed:false }
-      : await advertise(method, plan, controller.signal);
+    const started=Date.now(), outcome=outcomes.get(method);
+    if(!outcome)throw new Error('method');
+    outcome.attempted=1;
+    const result = await advertise(method, plan, controller.signal);
+    outcome.completed=1;outcome.responses=result.found.size;outcome.durationMs=Date.now()-started;
+    if(result.capped)outcome.issues.push('response_cap');
+    if(result.issue)outcome.issues.push(result.issue);
     progress.datagramsSent += result.sent;
     if (method === 'mdns') mdns = result.found; else if(method === 'ssdp') ssdp = result.found; else nbns = result.found;
     if (result.capped) failures.push('packet_cap');
@@ -70,7 +60,9 @@ try {
       if (controller.signal.aborted) return;
       const state = states.get(address);
       if (!state) return;
-      const result = mock ? (port === 443 ? 'open' : 'closed') : await tcpProbe(address, port, plan.interface.address, controller.signal);
+      const outcome=outcomes.get('tcp');if(!outcome)throw new Error('method');outcome.attempted++;
+      const result = await tcpProbe(address, port, plan.interface.address, controller.signal, undefined, (issue)=>{if(!outcome.issues.includes(issue))outcome.issues.push(issue);});
+      outcome.completed++;outcome.responses+=Number(result==='open'||result==='closed');outcome.durationMs=Date.now()-startedAt;
       if (result === 'error' && !failures.includes('tcp_error')) failures.push('tcp_error');
       state.ports.push({port,state:result}); state.remaining--; progress.tcpCompleted++; emit(address);
     }),
@@ -78,13 +70,16 @@ try {
       if (controller.signal.aborted) return;
       const state = states.get(address);
       if (!state || !plan.resolver) throw new Error('resolver');
-      state.dns = mock ? {state:'answer',names:['synthetic-device.example']} : await ptrProbe(address, plan.resolver, plan.interface.address, controller.signal);
+      const outcome=outcomes.get('ptr');if(!outcome)throw new Error('method');outcome.attempted++;
+      const dns=await ptrProbe(address, plan.resolver, plan.interface.address, controller.signal);
+      state.dns={state:dns.state,names:dns.names};
+      outcome.completed++;outcome.responses+=Number(dns.state==='answer'||dns.state==='no_data');outcome.durationMs=Date.now()-startedAt;
+      if(dns.issue&&!outcome.issues.includes(dns.issue))outcome.issues.push(dns.issue);
       if (state.dns.state === 'error' && !failures.includes('dns_error')) failures.push('dns_error');
       state.remaining--; progress.dnsCompleted++; emit(address);
     }),
   ]);
   if (controller.signal.aborted) failures.push('deadline');
-  send({ type:'done', failures:[...new Set(failures)] });
-  }
-} catch { send({ type:'done', failures:['collector_error'] }); }
+  send({ type:'done', failures:[...new Set(failures)], outcomes:[...outcomes.values()] });
+} catch { send({ type:'done', failures:['collector_error'], outcomes:[...outcomes.values()] }); }
 finally { clearTimeout(timer); }

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { observationAllowed, type CollectorAdapter, type CollectionContext } from './collector.js';
-import type { Job, JobSpec, JobStatus, ObservationInput, DiscoveryProgress } from '../shared/types.js';
+import { CollectionIssues, observationAllowed, type CollectorAdapter, type CollectionContext } from './collector.js';
+import type { Job, JobSpec, JobStatus, ObservationInput, DiscoveryProgress, DiscoveryOutcome } from '../shared/types.js';
 import { MAX_JOBS, Store } from './store.js';
 
 export class RequestError extends Error {
@@ -83,7 +83,11 @@ async function collectWithDeadline(
       if (settled || child.signal.aborted || context.signal.aborted) return;
       context.onProgress?.(progress);
     };
-    Promise.resolve().then(() => adapter.collect(target, { ...context, signal: child.signal, onBatch, onProgress }))
+    const onOutcomes = (outcomes: DiscoveryOutcome[]) => {
+      if (settled || child.signal.aborted || context.signal.aborted) return;
+      context.onOutcomes?.(outcomes);
+    };
+    Promise.resolve().then(() => adapter.collect(target, { ...context, signal: child.signal, onBatch, onProgress, onOutcomes }))
       .then((value) => finish(null, value), () => finish(new Error('Collector unavailable')));
   });
 }
@@ -127,11 +131,13 @@ export class JobManager {
       if (JSON.stringify(existing.spec) !== JSON.stringify(spec)) throw new RequestError(409, 'requestId already belongs to different job settings');
       return existing;
     }
+    if (this.store.hasRequestId(requestId)) throw new RequestError(409, 'This requestId was used previously. Start with a new requestId.');
     if (this.active) throw new RequestError(409, 'Another collection is active. Cancel it or wait for it to finish.');
-    if (this.store.jobs().length >= MAX_JOBS) throw new RequestError(409, 'Demo job capacity reached. See the reset instructions.');
+    if (this.store.jobs().length >= MAX_JOBS) throw new RequestError(409, 'Job capacity reached. See the reset instructions.');
     const targets = spec.scope.filter((target) => !spec.exclusions.includes(target));
     const job: Job = {
       id: randomUUID(), requestId, spec: structuredClone(spec), status: 'queued',
+      synthetic: !spec.discovery || this.discoveryAdapter?.id !== 'discovery-v1',
       createdAt: Date.now(), startedAt: null, finishedAt: null,
       completedTargets: 0, totalTargets: targets.length * spec.maxCycles,
       cyclesCompleted: 0, observationsAdded: 0, errors: [],
@@ -159,6 +165,7 @@ export class JobManager {
   private async run(active: Active, targets: string[]): Promise<void> {
     const job = active.job;
     const signal = active.controller.signal;
+    let completedWithIssues=false;
     job.status = 'running';
     job.startedAt = Date.now();
     const deadline = setTimeout(() => {
@@ -183,12 +190,14 @@ export class JobManager {
             const observations = await collectWithDeadline(adapter, target,
               { signal, now: Date.now(), cycle, jobId: job.id, discovery: job.spec.discovery, onBatch: ingest,
                 onProgress: (progress) => { signal.throwIfAborted(); job.discoveryProgress = progress; this.persist(job); },
+                onOutcomes: (outcomes) => { signal.throwIfAborted(); job.discoveryOutcomes=outcomes; this.persist(job); },
               }, job.spec.discovery ? 60000 : this.probeTimeoutMs);
             signal.throwIfAborted();
             if (observations.length) ingest(observations);
-          } catch {
+          } catch (error) {
             if (signal.aborted) throw new Error('Job stopped');
-            if (job.errors.length < 20) job.errors.push(job.spec.discovery
+            if(error instanceof CollectionIssues) {completedWithIssues=true;}
+            else if (job.errors.length < 20) job.errors.push(job.spec.discovery
               ? 'Discovery failed, timed out or reached a response cap. Saved address-candidate evidence and prior observations were retained.'
               : 'One synthetic collection failed or timed out; useful partial results and prior evidence were retained.');
           }
@@ -199,7 +208,7 @@ export class JobManager {
         this.persist(job);
         if (cycle + 1 < job.spec.maxCycles) await delay(job.spec.intervalMs, undefined, { signal });
       }
-      job.status = job.errors.length ? 'failed' : 'completed';
+      job.status = job.errors.length ? 'failed' : completedWithIssues ? 'completed_with_issues' : 'completed';
     } catch {
       job.status = active.reason ?? 'failed';
       if (!active.reason && job.errors.length < 20) job.errors.push('Collection stopped unexpectedly. Partial results were retained.');

@@ -10,7 +10,7 @@
     "dev:api": "tsx watch server/main.ts",
     "dev:web": "vite",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.browser-tests.json --noEmit",
-    "build": "tsc -p tsconfig.server.json && vite build",
+    "build": "node scripts/clean-build.mjs && tsc -p tsconfig.build.json && vite build",
     "start": "node dist/server/server/main.js",
     "test": "node --import tsx --test tests/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build",

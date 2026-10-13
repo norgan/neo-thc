@@ -2,7 +2,7 @@
 
 ## What runs
 
-Discovery is separate from the synthetic fixture controls. No job starts when Neo launches, lists local interfaces, opens the Discovery screen or previews settings. The user must select the source interface, CIDR and methods, review exact budgets, and explicitly confirm Start. The API revalidates the current interface and approved scope; the worker rechecks its host-supplied request. Real discovery shares the existing single active job slot, cancellation, storage limits and shutdown path.
+Discovery is the only runtime collector. Test fixtures are isolated under tests/support and are absent from the production build. No job starts when Neo launches, lists local interfaces, opens the Discovery screen or previews settings. The user must select the source interface, CIDR and methods, review exact budgets, and explicitly confirm Start. The API revalidates the current interface and approved scope; the worker rechecks its host-supplied request. Real discovery shares the existing single active job slot, cancellation, storage limits and shutdown path.
 
 Implemented methods:
 - **IP/TCP:** numeric IPv4 destinations and selected TCP connect ports. No application payloads, banners, ICMP ping or ARP enumeration.
@@ -48,7 +48,7 @@ A physical-network validation still requires the owner's chosen interface, autho
 
 ## Verification boundary
 
-CI uses synthetic interface descriptions, injected multicast/broadcast send seams and isolated loopback TCP/DNS fixtures. It never sends multicast or broadcast onto the GitHub runner's LAN. Source-mode and compiled discovery workers use the internal mock-only transport seam, which is inaccessible to API/environment settings and labels its evidence synthetic. Browser cases check preview/confirmation/reset behavior using intercepted discovery endpoints; they do not establish physical discovery interoperability.
+CI uses synthetic interface descriptions, injected multicast/broadcast send seams and isolated loopback TCP/DNS fixtures. It never sends multicast or broadcast onto the GitHub runner's LAN. Unit lifecycle tests inject a separate test-support worker, inaccessible to API/environment settings. The production worker has no mock branch. Production smoke executes its actual TCP transport against an isolated loopback listener; the public scope validator still rejects loopback. Browser cases check preview/confirmation/reset behavior using intercepted discovery endpoints; they do not establish physical discovery interoperability.
 
 Read current PR checks for execution status. Windows and physical network behavior, firewall effects, multihomed routing and actual responder coverage remain unverified. Real Proxmox transport is deferred.
 
@@ -60,3 +60,9 @@ Read current PR checks for execution status. Windows and physical network behavi
 - [NBNS broadcast name query](https://www.rfc-editor.org/rfc/rfc1002.html#section-4.2.12)
 - [Documented browse-master discovery](https://nmap.org/nsedoc/scripts/broadcast-netbios-master-browser.html): interoperability reference only; no Nmap code is included
 - [UPnP device architecture / SSDP](https://www.upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.0-20080424.pdf)
+
+## System defaults and method diagnostics
+
+Selecting an interface fills its actual CIDR. DNS configuration is read locally: Windows uses a fixed PowerShell Get-DnsClientServerAddress command (no profile, no interactive shell, no remote session, two-second timeout, 64 KiB output cap); reads are single-flight and cached for ten seconds. Interface alias matching and IPv4 validation happen in code. A labelled system-wide getServers result is the fallback. Unsupported off-link, IPv6 or stub resolvers are shown but never silently selected. Manual edits remain until explicit interface selection changes. Scope/method changes reset preview and consent.
+
+Completed runs retain bounded per-method attempted/completed/response counts, elapsed milliseconds and allowlisted issue categories. Raw errors, stacks and packet payloads are never shown. completed_with_issues means useful evidence was retained but one or more methods had incomplete coverage. Cancellation, overall deadline, worker/protocol failure remain separate terminal states. Old generic failures cannot recover discarded method details.

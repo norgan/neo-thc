@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
-import type { CollectorAdapter, CollectionContext } from './collector.js';
+import type { CollectorAdapter, CollectionContext } from '../../server/collector.js';
 import { fixtureTargets, fixtureObservations } from './collector.js';
-import type { ObservationInput } from '../shared/types.js';
+import type { ObservationInput } from '../../shared/types.js';
 import { PROXMOX_TARGET, PROXMOX_VERSION, parseInventory, failureCodes } from './proxmox.mjs';
 import type { Resource } from './proxmox.mjs';
 

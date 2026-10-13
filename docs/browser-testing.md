@@ -1,3 +1,7 @@
+## Real-only browser suite
+
+The current suite has eight cases in each of two Chromium viewports (16 total): real-only empty startup; actual-config prefill and manual edits; budget/token correction; preview/consent/repeated-click prevention; real evidence with synthetic-row exclusion; active-job lock/cancel; partial outcomes and API recovery; keyboard/navigation/link-wide consent. Browser API data is intercepted where needed; no live scan occurs. Read current PR checks for the exact corrected head. The following evidence is historical.
+
 # Browser verification
 
 ## Scope and status

@@ -1,8 +1,12 @@
+## Current runtime correction
+
+The production app is real-only (real-discovery-v2): Discovery/Inventory/System/Activity, no fixture collection route. Synthetic legacy database rows are retained but excluded before evidence projection, ambiguity summaries and capacity checks. Tests inject fixtures from tests/support; production build excludes that directory. Interface/CIDR/DNS defaults come from bounded local configuration reads, never network queries. Method diagnostics are host-validated and partial completion remains explicit.
+
 # Foundation architecture and collector extension
 
 ## Implemented source boundary
 
-A single local Node 24 process serves the Fastify API and production React files. SQLite records assets, immutable normalized observations, and job snapshots. The default IsolatedCollector runs one fixed, trusted worker per selected target, producing synthetic examples. A separate opt-in DiscoveryCollector uses fixed scoped TCP/DNS/UDP operations; opening the UI or previewing scope sends no probes. The browser polls a snapshot every two seconds without overlapping its own polls.
+A single local Node 24 process serves the Fastify API and production React files. SQLite records assets, immutable normalized observations, and job snapshots. The default DiscoveryCollector uses fixed scoped TCP/DNS/UDP operations; opening the UI or previewing scope sends no probes. The browser polls a snapshot every two seconds without overlapping its own polls.
 
 GitHub Actions passed the collector milestone (26 unit tests, 12 desktop/mobile Chromium cases, typechecks, production build and compiled-worker startup smoke). A late-callback review regression extends the unit suite to 27; see current PR checks and testing.md for exact head results. The wider requirements remain in requirements.md.
 

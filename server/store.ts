@@ -4,12 +4,15 @@ import type { Asset, Job, Observation, ObservationInput } from '../shared/types.
 
 export const MAX_OBSERVATIONS = 10_000;
 export const MAX_JOBS = 200;
+const realEvidence = "json_extract(payload, '$.synthetic') = 0 AND json_extract(payload, '$.source') = 'discovery-v1'";
+export const isRealObservation = (value: ObservationInput): boolean => value.synthetic === false && value.source === 'discovery-v1';
+export const isRealJob = (job: Job): boolean => job.synthetic !== true && !!job.spec.discovery && job.spec.scope.length === 1 && job.spec.scope[0] === 'discovery:ipv4';
 
 /** Synchronous SQLite is deliberately limited to this small single-process demo. */
 export class Store {
   private readonly db: DatabaseSync;
 
-  constructor(path = ':memory:') {
+  constructor(path = ':memory:', private readonly realOnly = false) {
     this.db = new DatabaseSync(path, { timeout: 1_000 });
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
     const version = this.db.prepare('PRAGMA user_version').get() as { user_version: number };
@@ -35,6 +38,7 @@ export class Store {
     try {
       let count = this.observationCount();
       for (const input of inputs) {
+        if (this.realOnly && !isRealObservation(input)) throw new Error('Non-network evidence is not accepted by the runtime');
         if (this.db.prepare('SELECT id FROM observations WHERE id = ?').get(input.id)) continue;
         if (count >= MAX_OBSERVATIONS) throw new Error('Observation capacity reached');
         // Identity is source + stable subject key. Never merge on an IP or a MAC.
@@ -60,12 +64,12 @@ export class Store {
   }
 
   observationCount(): number {
-    const row = this.db.prepare('SELECT COUNT(*) AS count FROM observations').get() as { count: number };
+    const row = this.db.prepare('SELECT COUNT(*) AS count FROM observations' + (this.realOnly ? ' WHERE ' + realEvidence : '')).get() as { count: number };
     return row.count;
   }
 
   observations(assetId: string, limit = 100): Observation[] {
-    const rows = this.db.prepare('SELECT payload FROM observations WHERE asset_id = ? ORDER BY observed_at DESC, rowid DESC LIMIT ?')
+    const rows = this.db.prepare('SELECT payload FROM observations WHERE asset_id = ?' + (this.realOnly ? ' AND ' + realEvidence : '') + ' ORDER BY observed_at DESC, rowid DESC LIMIT ?')
       .all(assetId, limit) as { payload: string }[];
     return rows.map((row) => JSON.parse(row.payload) as Observation);
   }
@@ -91,9 +95,11 @@ export class Store {
         latest,
       };
     });
+    // Filter before summaries and ambiguity grouping; hidden historical examples cannot leak names.
+    const visible = this.realOnly ? assets.filter((asset) => asset.latest !== null) : assets;
     // Keep a bounded sample per address instead of repeatedly scanning all job-scoped candidates.
     const claims = new Map<string, { count: number; sample: Asset[] }>();
-    for (const asset of assets) {
+    for (const asset of visible) {
       const keys = new Set((asset.latest?.identifiers ?? [])
         .filter((item) => item.kind === 'ip' || item.kind === 'mac').map((item) => item.kind + '/' + item.value));
       for (const key of keys) {
@@ -103,7 +109,7 @@ export class Store {
         claims.set(key, group);
       }
     }
-    for (const asset of assets) {
+    for (const asset of visible) {
       for (const identifier of asset.latest?.identifiers ?? []) {
         if (identifier.kind !== 'ip' && identifier.kind !== 'mac') continue;
         const group = claims.get(identifier.kind + '/' + identifier.value)!;
@@ -117,22 +123,28 @@ export class Store {
         }
       }
     }
-    return assets;
+    return visible;
   }
 
   jobs(): Job[] {
     const rows = this.db.prepare('SELECT payload FROM jobs ORDER BY created_at DESC, rowid DESC').all() as { payload: string }[];
-    return rows.map((row) => JSON.parse(row.payload) as Job);
+    return rows.map((row) => JSON.parse(row.payload) as Job).filter((job) => !this.realOnly || isRealJob(job));
   }
 
   job(id: string): Job | undefined {
     const row = this.db.prepare('SELECT payload FROM jobs WHERE id = ?').get(id) as { payload: string } | undefined;
-    return row ? JSON.parse(row.payload) as Job : undefined;
+    const job = row ? JSON.parse(row.payload) as Job : undefined;
+    return job && (!this.realOnly || isRealJob(job)) ? job : undefined;
   }
 
   jobByRequest(requestId: string): Job | undefined {
     const row = this.db.prepare('SELECT payload FROM jobs WHERE request_id = ?').get(requestId) as { payload: string } | undefined;
-    return row ? JSON.parse(row.payload) as Job : undefined;
+    const job = row ? JSON.parse(row.payload) as Job : undefined;
+    return job && (!this.realOnly || isRealJob(job)) ? job : undefined;
+  }
+
+  hasRequestId(requestId: string): boolean {
+    return !!this.db.prepare('SELECT id FROM jobs WHERE request_id = ?').get(requestId);
   }
 
   saveJob(job: Job): void {

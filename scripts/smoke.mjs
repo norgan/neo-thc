@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { Worker } from 'node:worker_threads';
+import { createServer } from 'node:net';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, access } from 'node:fs/promises';
@@ -57,9 +59,36 @@ async function portIsClosed() {
 }
 
 try {
-  await access('dist/server/server/collector-worker.mjs');
-  await access('dist/server/server/proxmox.mjs');
   await access('dist/server/server/discovery-worker.mjs');
+  // Execute the actual compiled discovery worker against one isolated loopback TCP listener.
+  // No production API scope override, mock worker, LAN multicast or broadcast is used.
+  const listener=createServer((socket)=>socket.on('data',()=>assert.fail('Unexpected probe payload')));
+  await new Promise((resolve)=>listener.listen(0,'127.0.0.1',resolve));
+  const listenAddress=listener.address();
+  const loopbackPlan={interface:{id:'isolated-loopback',name:'CI loopback',address:'127.0.0.1',netmask:'255.0.0.0',cidr:'127.0.0.0/8'},
+    cidr:'127.0.0.1/32',targets:['127.0.0.1'],methods:['tcp'],ports:[listenAddress.port],resolver:null,linkScopeConfirmed:false,tcpBudget:1,dnsBudget:0,datagramBudget:0};
+  const worker=new Worker(new URL('../dist/server/server/discovery-worker.mjs',import.meta.url),{
+    workerData:{v:1,attemptId:randomUUID(),plan:loopbackPlan},execArgv:[],env:{},stdout:true,stderr:true,
+  });
+  worker.stdout.resume();worker.stderr.resume();
+  const batches=[];
+  try {
+    await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('Compiled discovery worker deadline')),5000);
+      worker.once('error',(error)=>{clearTimeout(timer);reject(error);});
+      worker.on('message',(raw)=>{
+        const message=JSON.parse(raw);
+        if(message.type==='batch')batches.push(message.result);
+        if(message.type==='done'){clearTimeout(timer);try{assert.deepEqual(message.failures,[]);assert.equal(message.outcomes[0].responses,1);resolve();}catch(error){reject(error);}}
+      });
+    });
+  } finally {await worker.terminate();await new Promise((resolve)=>listener.close(resolve));}
+  assert.equal(batches.length,1);assert.equal(batches[0].ports[0].state,'open');
+  const {Store}=await import('../dist/server/server/store.js');
+  const {discoveryObservation}=await import('../dist/server/server/discovery-runner.js');
+  const evidence=discoveryObservation(batches[0],loopbackPlan,'actual-loopback-smoke');
+  const seed=new Store(join(directory,'neo.sqlite'));
+  seed.ingest([evidence,{...evidence,id:randomUUID(),source:'fixture-v1',synthetic:true,subjectKey:'old-demo',label:'Hidden legacy sample'}]);seed.close();
   assert.ok(await portIsClosed(), 'Port 4318 must be unused before this smoke check');
   server = spawn('npm', ['start'], {
     detached: true,
@@ -77,7 +106,7 @@ try {
     try {
       const response = await api('/api/v1/health');
       const health = await response.json();
-      return health.status === 'ok' && health.synthetic === true && health.collector === 'fixture-and-opt-in-discovery';
+      return health.status === 'ok' && health.synthetic === false && health.runtime === 'real-discovery-v2';
     } catch { return false; }
   }, 10_000, 'Compiled server never became ready');
 
@@ -96,49 +125,18 @@ try {
     assert.ok((await asset.text()).length > 100, 'Built asset must not be empty');
   }
 
-  const empty = await (await api('/api/v1/assets')).json();
-  assert.equal(empty.assets.length, 0, 'The smoke database must be isolated and empty');
-  const created = await (await api('/api/v1/jobs', {
-    method: 'POST',
-    body: JSON.stringify({
-      requestId: 'smoke-' + randomUUID(),
-      mode: 'initial',
-      scope: ['fixture:gateway', 'fixture:nas'],
-      exclusions: [],
-    }),
-  })).json();
-  let job;
-  await until(async () => {
-    job = (await (await api('/api/v1/jobs/' + encodeURIComponent(created.job.id))).json()).job;
-    return !['queued', 'running'].includes(job.status);
-  }, 10_000, 'Fixture job did not finish');
-  assert.equal(job.status, 'completed');
-  assert.equal(job.observationsAdded, 2);
-  const inventory = await (await api('/api/v1/assets')).json();
-  assert.equal(inventory.synthetic, true);
-  assert.equal(inventory.assets.length, 2);
-  assert.ok(inventory.assets.some((asset) => asset.kind === 'storage' && asset.health === 'unhealthy'));
-  const platform = await (await api('/api/v1/jobs', {
-    method: 'POST', body: JSON.stringify({ requestId: 'pve-smoke-' + randomUUID(), mode: 'initial', scope: ['fixture:proxmox-lab'] }),
-  })).json();
-  await until(async () => {
-    job = (await (await api('/api/v1/jobs/' + encodeURIComponent(platform.job.id))).json()).job;
-    return !['queued', 'running'].includes(job.status);
-  }, 10_000, 'Compiled Proxmox worker did not finish');
-  assert.equal(job.status, 'completed');
-  assert.equal(job.observationsAdded, 5);
-  const enriched = await (await api('/api/v1/assets')).json();
-  assert.equal(enriched.assets.length, 7);
-  assert.equal(enriched.assets.filter((asset) => asset.latest.source === 'proxmox-fixture-v1').length, 5);
-  const { DiscoveryCollector } = await import('../dist/server/server/discovery-runner.js');
-  const { parseDiscovery } = await import('../dist/server/server/discovery-scope.js');
-  const syntheticInterface = {id:'smoke-interface',name:'Synthetic smoke link',address:'192.0.2.10',netmask:'255.255.255.0',cidr:'192.0.2.0/24'};
-  const syntheticPlan = parseDiscovery({requestId:'compiled-discovery-smoke',interfaceId:syntheticInterface.id,cidr:'192.0.2.0/30',methods:['tcp'],ports:[443]},[syntheticInterface]).plan;
-  const discovery = new DiscoveryCollector(true,()=>[syntheticInterface]);
-  const samples = await discovery.collect('discovery:ipv4',{signal:controller.signal,now:Date.now(),cycle:0,jobId:randomUUID(),discovery:syntheticPlan});
-  assert.equal(samples.length,syntheticPlan.targets.length);
-  assert.ok(samples.every((sample)=>sample.synthetic === true && sample.source === 'discovery-fixture-v1'));
-  console.log('PASS: npm start, loopback health, production assets, fixture jobs, compiled Proxmox and mock-only discovery workers');
+  const inventory=await (await api('/api/v1/assets')).json();
+  assert.equal(inventory.assets.length,1);
+  assert.equal(inventory.assets[0].latest.synthetic,false);
+  assert.deepEqual(inventory.assets[0].identityWarnings,[]);
+  assert.equal(inventory.assets[0].latest.services[0].note.includes('open'),true);
+  const snapshot=await (await api('/api/v1/snapshot')).json();
+  assert.equal(snapshot.runtime,'real-discovery-v2');assert.deepEqual(snapshot.targets,[]);
+  const removed=await fetch(base+'/api/v1/jobs',{method:'POST',headers:{'Content-Type':'application/json','X-Neo-Client':'local-ui'},
+    body:JSON.stringify({requestId:'no-runtime-fixture',mode:'initial',scope:['fixture:nas']}),signal:AbortSignal.timeout(1000)});
+  assert.equal(removed.status,404);
+  console.log('PASS: real-only npm start, loopback health/assets, legacy sample quarantine and actual compiled discovery worker TCP socket');
+
 } catch (error) {
   failed = true;
   console.error('FAIL: production smoke check:', error.message);

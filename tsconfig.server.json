@@ -21,6 +21,7 @@
     "server/**/*.ts",
     "shared/**/*.ts",
     "tests/**/*.ts",
-    "server/**/*.mjs"
+    "server/**/*.mjs",
+    "tests/**/*.mjs"
   ]
 }

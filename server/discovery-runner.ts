@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { Worker } from 'node:worker_threads';
-import type { CollectorAdapter, CollectionContext } from './collector.js';
-import type { DiscoveryInterface, DiscoveryPlan, DiscoveryProgress, ObservationInput } from '../shared/types.js';
+import { Worker, type WorkerOptions } from 'node:worker_threads';
+import { CollectionIssues, type CollectorAdapter, type CollectionContext } from './collector.js';
+import type { DiscoveryInterface, DiscoveryPlan, DiscoveryProgress, DiscoveryOutcome, DiscoveryIssue, DiscoveryMethod, ObservationInput } from '../shared/types.js';
 import { localInterfaces, parseDiscovery } from './discovery-scope.js';
 import { validateResult } from './discovery-result.mjs';
 
@@ -35,22 +35,24 @@ function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid discovery message');
   return value as Record<string, unknown>;
 }
-/** Production defaults to real sockets; the internal test seam cannot be set by API or environment. */
+/** The runtime always selects this fixed worker. Test injection is constructor-only. */
+export function createDiscoveryWorker(workerData: unknown, options: WorkerOptions): Worker {
+  return new Worker(new URL('./discovery-worker.mjs', import.meta.url), {...options, workerData});
+}
 export class DiscoveryCollector implements CollectorAdapter {
-  readonly id = 'discovery-v1';
+  get id() { return this.synthetic ? 'discovery-fixture-v1' : 'discovery-v1'; }
   readonly isolated = true as const;
   readonly capabilities = ['network-observations'] as const;
   readonly targets = [];
   private active: Worker | null = null;
   private disabled = false;
-  constructor(private readonly testMode = false, private readonly interfaces = localInterfaces,
-    private readonly fixtureScenario: 'complete' | 'hold-after-first' | 'late-after-done' = 'complete') {}
+  constructor(private readonly interfaces = localInterfaces,
+    private readonly workerFactory = createDiscoveryWorker, private readonly synthetic = false) {}
   get problem() { return this.disabled ? 'Discovery worker cleanup failed. Restart before collecting again.' : null; }
 
   async collect(target: string, context: CollectionContext): Promise<ObservationInput[]> {
     context.signal.throwIfAborted();
     if (target !== 'discovery:ipv4' || !context.discovery || !context.jobId || this.active || this.disabled) throw new Error('Discovery unavailable');
-    if (!this.testMode && this.fixtureScenario !== 'complete') throw new Error('Invalid discovery fixture');
     const attemptStartedAt = Date.now();
     const plan = context.discovery;
     const current = parseDiscovery({
@@ -60,8 +62,8 @@ export class DiscoveryCollector implements CollectorAdapter {
     }, this.interfaces(), true).plan;
     if (JSON.stringify(current) !== JSON.stringify(plan)) throw new Error('Discovery interface or scope changed');
     const attemptId = randomUUID();
-    const worker = new Worker(new URL('./discovery-worker.mjs', import.meta.url), {
-      workerData: { v:1, attemptId, plan, testMode:this.testMode, fixtureScenario:this.fixtureScenario }, execArgv:[], env:{},
+    const worker = this.workerFactory({ v:1, attemptId, plan }, {
+      execArgv:[], env:{},
       resourceLimits:{maxOldGenerationSizeMb:32,maxYoungGenerationSizeMb:8,stackSizeMb:4},
       stdout:true, stderr:true,
     });
@@ -100,7 +102,7 @@ export class DiscoveryCollector implements CollectorAdapter {
             const result = validateResult(message.result, plan);
             if (seen.has(result.address)) throw new Error('duplicate');
             seen.add(result.address);
-            const observation = discoveryObservation(result, plan, context.jobId!, this.testMode, attemptStartedAt);
+            const observation = discoveryObservation(result, plan, context.jobId!, this.synthetic, attemptStartedAt);
             context.signal.throwIfAborted();
             if (context.onBatch) context.onBatch([observation]); else collected.push(observation);
           } else if (message.type === 'progress') {
@@ -113,13 +115,34 @@ export class DiscoveryCollector implements CollectorAdapter {
             previous = progress as unknown as DiscoveryProgress;
             context.onProgress?.({...previous});
           } else if (message.type === 'done') {
-            if (Object.keys(message).some((key) => !['v','attemptId','type','failures'].includes(key)) || !Array.isArray(message.failures) ||
+            if (Object.keys(message).some((key) => !['v','attemptId','type','failures','outcomes'].includes(key)) || !Array.isArray(message.failures) ||
               message.failures.length > 6 || message.failures.some((code) => !['packet_cap','socket_error','dns_error','tcp_error','deadline','collector_error'].includes(code))) throw new Error('completion');
-            void finish(message.failures.length || seen.size !== plan.targets.length ? new Error('Discovery incomplete') : null);
+            const outcomes=validateOutcomes(message.outcomes,plan);
+            context.onOutcomes?.(outcomes);
+            const methodIssues=outcomes.some((outcome)=>outcome.issues.length);
+            void finish(seen.size!==plan.targets.length || message.failures.includes('collector_error') || message.failures.includes('deadline')
+              ? new Error('Discovery incomplete') : methodIssues ? new CollectionIssues() : message.failures.length ? new Error('Discovery incomplete') : null);
           } else throw new Error('type');
         } catch { void finish(new Error('Invalid discovery result')); }
       });
       if (context.signal.aborted) abort();
     });
   }
+}
+
+export function validateOutcomes(value:unknown,plan:DiscoveryPlan):DiscoveryOutcome[] {
+  if(!Array.isArray(value)||value.length!==plan.methods.length)throw new Error('Invalid method outcomes');
+  const seen=new Set<string>(),allowed:DiscoveryIssue[]=['access_denied','source_unavailable','network_unreachable','timeout','refused','response_cap','io_error'];
+  return value.map((input)=>{
+    const row=object(input),method=row.method;
+    if(typeof method!=='string'||!plan.methods.includes(method as DiscoveryMethod)||seen.has(method)||
+      Object.keys(row).some((key)=>!['method','attempted','completed','responses','durationMs','issues'].includes(key)))throw new Error('Invalid method');
+    seen.add(method);
+    const budget=method==='tcp'?plan.tcpBudget:method==='ptr'?plan.dnsBudget:1;
+    if(['attempted','completed','responses','durationMs'].some((key)=>typeof row[key]!=='number'||!Number.isInteger(row[key])||row[key]<0)||
+      (row.attempted as number)>budget||(row.completed as number)>(row.attempted as number)||
+      (row.responses as number)>(method==='tcp'?plan.tcpBudget:plan.targets.length)||(row.durationMs as number)>60000||
+      !Array.isArray(row.issues)||row.issues.length>allowed.length||row.issues.some((issue)=>!allowed.includes(issue as DiscoveryIssue)))throw new Error('Invalid counters');
+    return row as unknown as DiscoveryOutcome;
+  });
 }

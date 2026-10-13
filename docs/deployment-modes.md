@@ -28,7 +28,7 @@ On-premises site
                                            Locally served interface
 ```
 
-The current code implements a loopback-only version of this arrangement with synthetic fixtures and explicitly approved IPv4 discovery. No credentialed platform API connection or remote hosting exists.
+The current code implements a loopback-only version of this arrangement with explicitly approved IPv4 discovery; synthetic fixtures are test-only. No credentialed platform API connection or remote hosting exists.
 
 ### Split-mode design envelope
 

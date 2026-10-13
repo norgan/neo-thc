@@ -50,8 +50,9 @@ export interface JobSpec {
 }
 export type JobStatus =
   | 'queued' | 'running' | 'completed' | 'cancelled'
-  | 'timed_out' | 'interrupted' | 'failed';
+  | 'timed_out' | 'interrupted' | 'failed' | 'completed_with_issues';
 export interface Job {
+  synthetic?: boolean;
   id: string;
   requestId: string;
   spec: JobSpec;
@@ -65,6 +66,7 @@ export interface Job {
   observationsAdded: number;
   errors: string[];
   discoveryProgress?: DiscoveryProgress;
+  discoveryOutcomes?: DiscoveryOutcome[];
 }
 export interface FixtureTarget {
   key: string;
@@ -72,6 +74,7 @@ export interface FixtureTarget {
   defaultSelected?: boolean;
 }
 export interface Snapshot {
+  runtime: string;
   synthetic: boolean;
   collectionError: string | null;
   assets: Asset[];
@@ -96,4 +99,12 @@ export interface DiscoveryPlan {
 export interface DiscoveryProgress {
   addressesCompleted: number; totalAddresses: number;
   tcpCompleted: number; dnsCompleted: number; datagramsSent: number;
+}
+
+export interface ResolverChoice { address: string; supported: boolean; reason: string; }
+export interface DiscoveryDefaults { source: string; resolver: string; servers: ResolverChoice[]; }
+
+export type DiscoveryIssue='access_denied'|'source_unavailable'|'network_unreachable'|'timeout'|'refused'|'response_cap'|'io_error';
+export interface DiscoveryOutcome {
+  method:DiscoveryMethod; attempted:number; completed:number; responses:number; durationMs:number; issues:DiscoveryIssue[];
 }

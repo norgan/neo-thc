@@ -3,45 +3,11 @@
 **Neo — Network Environment Overview**  
 **THC — The Homelab Companion**
 
-A local-first companion for understanding a home network and homelab through one responsive desktop and mobile web interface.
+A local-first, agentless network discovery app. The normal runtime contains no demo controls, sample devices or simulated platform integration. The opening screen is Discovery.
 
-## Status: opt-in IPv4 discovery milestone
+## Start or update locally
 
-This branch contains a TypeScript / Fastify / SQLite / React foundation. **The discovery milestone passed 40 unit tests, 16 desktop/mobile Chromium cases, typechecks, production build and startup smoke** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38340290987), source head 31cb874). Smoke exercises both compiled collector workers with synthetic transport. Review corrections add expiry, provenance and lifecycle regressions (46 unit tests in source); current PR checks are authoritative for the final head. Physical-network interoperability, Windows execution, comprehensive accessibility review and deployment remain unverified.
-
-The **Discovery** screen now implements bounded real IPv4 network requests, inactive until you choose an interface, CIDR and methods, preview the budget and confirm Start. Methods: TCP connect probes, explicit-resolver reverse DNS, mDNS service-type multicast, SSDP root-device multicast and a limited legacy NetBIOS browse-master broadcast. [Discovery scope and limits](docs/discovery.md) distinguish those mechanisms and their coverage.
-
-Fixtures remain available in Overview. Initial/live fixture actions still send no network traffic; synthetic entries are labelled separately from real address candidates. Discovery is initial-only. There is no ping, ARP scan, IPv6 discovery, credential attempt, real Proxmox API connection or automatic scan.
-
-CI checks transport/parser/scope behavior and browser confirmation using loopback or synthetic seams. No user network has been scanned during development.
-
-The [requirements](docs/requirements.md) retain the original product scope and now include the owner-approved deployment direction below. They describe the wider product, including features still planned.
-
-## Product direction: agentless first, two deployment modes
-
-Prefer agentless APIs and read-only protocols. Endpoint agents are optional, only for required capabilities unavailable agentlessly. A site collector may be installed alongside the UI, or remain on-premises while the interface is hosted remotely.
-
-**Only the colocated, loopback-only application is implemented today.** Split deployment is planned. Remote static UI hosting does not decide where the API, storage or control plane runs and does not authorize inventory uploads. Managed-system credentials stay local to the collector. Pairing, authenticated encrypted outbound communication, local scope enforcement, revocation and offline delivery need design and security review before implementation. See the [deployment decision record](docs/deployment-modes.md).
-
-## Quick start
-
-Prerequisite: **Node.js 24.x** with npm. The engine intentionally excludes other Node majors. SQLite uses built-in `node:sqlite` (experimental/active-development in Node 24); no SQLite native addon is needed.
-
-From the repository root:
-
-```sh
-npm ci
-npm run check
-npm start
-```
-
-Then open **http://127.0.0.1:4318**. Overview contains synthetic fixtures. For real network requests, open Discovery, select and preview an authorized local IPv4 scope, then confirm Start. Nothing scans automatically. Use Inventory / System for candidate evidence and Activity for progress or cancellation.
-
-These are local setup instructions. CI has checked the production startup path on Linux; your own environment still needs verification. Installation downloads npm packages. Direct and transitive dependencies are locked in the genuine npm-generated package-lock.json retrieved from the successful CI artifact, digest-checked and committed unchanged. Use `npm ci` to install that resolution. See [verification provenance](docs/testing.md).
-
-### Updating an existing Windows checkout
-
-Stop Neo with Ctrl+C, then from the existing repository directory in PowerShell:
+Requires **Node.js 24.x**. From a clean checkout on feat/initial-foundation, stop the old process with Ctrl+C before updating:
 
 ```powershell
 git pull --ff-only origin feat/initial-foundation
@@ -50,64 +16,50 @@ npm.cmd run build
 npm.cmd start
 ```
 
-This assumes that feature branch is already checked out and the working tree has no conflicting local edits. The database schema remains v1; no reset or migration is required, and prior observations remain. Preserve the local data directory. These commands were checked against the scripts, but Windows itself has not been executed in CI. The standalone smoke/browser lifecycle harnesses are Linux-only.
+Open **http://127.0.0.1:4318**. The header should show **real-discovery-v2**. If you see an older demo interface, stop the old server, rebuild, restart and reload. A new frontend detects an older API and explains the mismatch.
 
-## Development
+On macOS/Linux, use npm instead of npm.cmd. Build/start commands are portable by source inspection; Windows itself has not been executed in CI. The standalone smoke/browser process harnesses target Linux.
 
-Use two terminals, both at the repository root:
+Build cleans only generated dist/server files; it never touches data. SQLite remains schema v1. **Do not wipe your database:** real discovery results are preserved. Legacy synthetic rows remain stored but are excluded from normal inventory, evidence, activity, ambiguity warnings and collection capacity. There is no public fixture submission endpoint.
+
+## Real discovery
+
+1. Choose the source interface. Its actual CIDR is prefilled and editable.
+2. Select methods. TCP ports are fully visible in a multiline field; target × unique-port counts show the exact attempt budget.
+3. For PTR DNS, Neo reads local system configuration without sending a query. On Windows it uses a fixed, read-only Get-DnsClientServerAddress command to find interface-specific IPv4 resolvers. Other systems, or an unavailable Windows read, use a clearly labelled system-wide configuration list. Only an on-link supported resolver is prefilled; no gateway or public DNS address is guessed. You can edit the choice.
+4. Preview the scope, review the budget, confirm, then Start. Prefill and preview do not scan.
+5. Activity shows progress, cancellation and per-method outcomes. Inventory contains address candidates and evidence, not a claimed count of verified devices.
+
+Methods: numeric IPv4 TCP connect probes; reverse DNS/PTR; mDNS service-type multicast; SSDP root-device multicast; limited legacy NetBIOS browse-master broadcast. No ping/ARP, IPv6, UDP port sweep, banner capture, URL fetching, credential attempt or automatic scheduled scan.
+
+At most 256 IPv4 addresses, eight selected ports and 1,024 total TCP attempts; one pass with a 60-second bound. Multicast/broadcast require separate full-subnet approval on an unambiguous /24–/30 interface. The whole link receives those queries. See [exact protocol scope and limits](docs/discovery.md).
+
+A run may finish **completed with issues** when individual methods encounter a denied socket, unavailable source, DNS timeout/refusal or receive cap. Saved evidence remains available. Expected TCP refusal/timeout, DNS no-data and silent advertisements are inconclusive outcomes, not proof of failure or absence. Older jobs retain their existing generic errors because discarded method diagnostics cannot be reconstructed.
+
+## Safety and data
+
+The UI/API binds to 127.0.0.1 only. Host/Origin/client-header guards are present, but there is no user authentication. Do not expose it through a LAN/public proxy, tunnel or container mapping.
+
+Data is stored locally in data/neo.sqlite, or an explicit local NEO_DB_PATH. Stop Neo before backup; preserve SQLite sidecars if present. Network addresses, DNS names and advertisements are private metadata. Neo does not upload them. No credentials are required for these discovery methods.
+
+Identity remains source/job/address-scoped; IP/MAC claims never merge devices permanently. Health remains unknown; timestamps, expiry and unverified claims are visible. Node workers isolate trusted-code hangs, not hostile code or OS capabilities. Storage is bounded to 200 visible jobs and 10,000 visible observations; legacy samples do not consume the real-data allowance.
+
+## Development and verification
 
 ```sh
-npm run dev:api
-npm run dev:web
+npm ci
+npm run check
+npm start
 ```
 
-Open **http://127.0.0.1:5173**. Vite proxies /api to the loopback API on port 4318. No React-specific Vite plugin is required for this starter; JSX uses the automatic transform.
+Use npm run dev:api and npm run dev:web in separate terminals for development (Vite: 127.0.0.1:5173). npm run check runs typechecks, unit tests and build. npm run smoke exercises actual compiled discovery sockets against an isolated loopback listener; npm run test:browser exercises the production UI with controlled API data. Browser installation is documented in [browser testing](docs/browser-testing.md).
 
-Commands:
-- `npm run typecheck`: server, tests, shared types, and browser type checks
-- `npm test`: Node test runner via tsx; isolated databases, API injection, loopback TCP/DNS fixtures and injected multicast/broadcast sockets; no user-network scans
-- `npm run build`: TypeScript server output plus Vite browser build
-- `npm run check`: typecheck, tests, then build
-- `npm run smoke`: Linux-only bounded production-startup/API check, after build; uses a temporary database and port 4318
-- `npm run test:browser`: desktop/mobile Chromium fixture flows, after browser installation and build
-- `npm start`: serve the built app and API on 127.0.0.1:4318
+Fixtures exist only in tests/support and are excluded from the production build. They are injected explicitly by tests, never selected by an environment variable or production HTTP request. The production worker contains only real network operations.
 
-Run build before start, and run all commands from the root. Desktop/mobile Chromium checks cover core flows, keyboard basics, repeated actions and API recovery. See [browser coverage and limits](docs/browser-testing.md) and remaining [manual checks](docs/testing.md).
+The prior discovery head 31aed948 passed 46 unit tests and 16 Chromium cases. This real-only/defaults/diagnostics correction adds regression coverage; **current PR checks are the source of truth for its execution status**. Source is authored through chat/GitHub and executed by authorized GitHub Actions, without local repository execution. Physical network interoperability, Windows execution, Safari/Firefox and full accessibility remain unverified. A user-reported local Windows scan saved candidate evidence but reported a generic method issue on the prior build; that is not a claim that all protocols succeeded.
 
-## What is included
+## Product direction
 
-- Responsive Overview, Inventory, System, Activity and Discovery views; Connections and advanced DNS diagnostics remain planned
-- Empty/error/loading states; saved fixture selection in browser localStorage
-- Stable internal asset IDs, source-scoped identity, immutable observation history, address-reuse warnings
-- Evidence source, vantage, observation/receipt times, freshness, and separate current-health interpretation
-- Healthy, unhealthy, stopped, unknown and stale examples; synthetic failed NFS with healthy ping/SMB
-- One bounded job at a time: explicit fixture scope/exclusions, progress, idempotency keys, cancellation, total/per-target deadlines
-- Initial one-pass and live periodic-fixture modes; partial results and restart recovery
-- SQLite persistence; a bounded adapter interface with no device-changing operations
-- One killable built-in worker per target; fixed mocked Proxmox version/node/guest operations, parent-validated batches and retained partial evidence
-- Separate explicit-scope Discovery screen with up to 256 IPv4 addresses, 1,024 TCP attempts, 256 PTR queries and one datagram per selected link-wide protocol
-- Real address candidates remain job-scoped, with unknown health and explicit unverified DNS/advertisement evidence
-- Automated test source for identity, freshness, API validation, job lifecycle, packet parsing, source binding and persistence
+Agentless first. An optional endpoint agent is only for capabilities unavailable agentlessly. Colocated UI/collector is implemented; an on-premises collector with remotely hosted interface is planned. Remote UI does not decide API/storage/control-plane location or authorize uploading inventory. Local secrets, authenticated encrypted pairing, scope enforcement, revocation and offline delivery require design/security review. See [deployment modes](docs/deployment-modes.md) and [requirements](docs/requirements.md).
 
-## Boundaries and limits
-
-The API binds only to 127.0.0.1. It has Host/Origin checks and a custom local-client header for mutations, but **no user authentication**. Do not expose it through a public/LAN proxy, tunnel, container port mapping, or shared host. Those guards do not protect against malicious local processes. Mobile layouts can be inspected using desktop responsive emulation; remote phone access is not enabled.
-
-Only fixed trusted built-in collectors are compiled in. The optional “Simulated Proxmox inventory” target models one installation using an exact synthetic 8.4.22 profile. It never contacts a platform. Running/online states remain unknown service health, and empty permission-filtered lists never erase prior assets. See [collector boundaries](docs/collector-isolation.md).
-
-Each target runs through a fixed Node worker with deadlines, termination, empty environment and no inherited preloads. This isolates trusted-code hangs, not hostile code or OS capabilities; Node resource limits exclude ArrayBuffers and global out-of-memory failures. The discovery worker uses bounded Node TCP, DNS and UDP sockets. No dynamic plugin loader or credential surface is provided.
-
-Storage is capped at 200 jobs and 10,000 observations. It does not silently delete historical evidence. When capacity is reached, collection fails with retained prior data. Each System response includes at most the latest 100 observations. No automatic retention, export, encrypted database, cross-source identity reconciliation, dependency graph or migration beyond schema v1 is provided.
-
-Database: `data/neo.sqlite` by default; an explicit `NEO_DB_PATH` environment variable may choose another local path. Stop Neo before backup/reset. Preserve the data directory (including SQLite sidecars, if present); to reset the synthetic demo, move that directory aside and restart. Use a separate local database path when moving from fixture exploration to real discovery if you want to keep the inventories apart. Real addresses, PTR names and advertisements are private network metadata; protect the local database and backups. There are no stored credentials or telemetry. Core operation needs no cloud service after package installation and build.
-
-## Next milestones
-
-1. Extend accessibility, physical-device, cross-browser and local-platform verification.
-2. Review isolation, credentials and permission/version contracts before introducing real platform API transports.
-3. Design explicitly approved scopes and agentless UniFi / OPNsense / Proxmox adapters with local credential handling.
-4. Build evidence-backed dependencies, guarded DNS diagnostics and resumable recommendations that show executive-function burden.
-5. Assess QNAP / Nextcloud compatibility and optional endpoint agents only for remaining agentless capability gaps.
-6. Resolve split-mode API/storage/control-plane placement and review the collector trust boundary before implementing remote hosting.
-
-See [architecture and collector design](docs/architecture.md) and [verification checklist](docs/testing.md). The included CI workflow checks locked installation, types, fixture/loopback tests, build, production smoke and browser confirmation behavior. Publishing the source does not run discovery on the owner's network or deploy the app.
+Real Proxmox and other credentialed platform adapters, dependency graphs, advanced DNS diagnostics, recommendations and remote deployment remain planned. No merge or deployment is implied.

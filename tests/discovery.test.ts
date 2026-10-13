@@ -8,9 +8,14 @@ import { parseDiscovery, cidrRange } from '../server/discovery-scope.js';
 import { discoveryQuery, parseAdvertisement, readName, MDNS_NAME, SSDP_QUERY, parseSsdp } from '../server/discovery-protocols.mjs';
 import { tcpProbe, ptrProbe, advertise, pool } from '../server/discovery-network.mjs';
 import { validateResult } from '../server/discovery-result.mjs';
-import { discoveryObservation, DiscoveryCollector } from '../server/discovery-runner.js';
+import { discoveryObservation } from '../server/discovery-runner.js';
+import { TestDiscoveryCollector as DiscoveryCollector } from './support/discovery.js';
+import { createApp as createRealApp } from '../server/app.js';
+import { formBudget } from '../shared/discovery-form.js';
+import { createDnsDefaultsReader, parseWindowsDns } from '../server/discovery-defaults.js';
+import { networkIssue } from '../server/discovery-network.mjs';
 import { Store } from '../server/store.js';
-import { createApp } from '../server/app.js';
+import { createTestApp as createApp } from './support/app.js';
 import type { DiscoveryInterface, ObservationInput, Job } from '../shared/types.js';
 
 const iface: DiscoveryInterface = {id:'test-interface',name:'Synthetic interface',address:'192.0.2.10',netmask:'255.255.255.0',cidr:'192.0.2.0/24'};
@@ -315,4 +320,75 @@ test('queued nonempty batches and progress after terminal discovery completion a
   assert.equal(accepted.length,2);assert.equal(progressCount,2);
   assert.ok(accepted.every((item)=>item.identifiers[0].value===p.targets[0]));
   assert.notEqual(accepted[0].subjectKey,accepted[1].subjectKey);
+});
+
+test('real runtime rejects fixture routes and excludes synthetic history before summaries and capacity',async()=>{
+  const {mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path');
+  const directory=await mkdtemp(join(tmpdir(),'neo-real-projection-')),path=join(directory,'data.sqlite');
+  const seed=new Store(path),real=discoveryObservation(row(),plan(),'retained-real-job');
+  let hiddenId='';
+  try {
+    seed.ingest([real,{...real,id:'hidden-demo-event',synthetic:true,source:'fixture-v1',subjectKey:'demo',label:'Hidden demo name'},
+      {...real,id:'untagged-old-event',synthetic:undefined as unknown as boolean,source:'fixture-v1',subjectKey:'old',label:'Old sample'}]);
+    hiddenId=seed.assets().find((asset)=>asset.label==='Hidden demo name')!.id;
+    // Fill only the legacy job budget. It must not block normal real discovery.
+    for(let index=0;index<200;index++)seed.saveJob({id:'old-'+index,requestId:'legacy-request-'+index,spec:{mode:'initial',scope:['fixture:nas'],exclusions:[],intervalMs:1000,maxCycles:1,maxDurationMs:1000},
+      status:'completed',createdAt:index,startedAt:index,finishedAt:index,completedTargets:1,totalTargets:1,cyclesCompleted:1,observationsAdded:1,errors:[]});
+  } finally {seed.close();}
+  const {app,store,jobs}=createRealApp({dbPath:path,discoveryInterfaces:()=>[iface]});
+  try {
+    const snapshot=(await app.inject({url:'/api/v1/snapshot',headers})).json();
+    assert.equal(snapshot.runtime,'real-discovery-v2');assert.equal(snapshot.assets.length,1);assert.equal(snapshot.jobs.length,0);
+    assert.deepEqual(snapshot.assets[0].identityWarnings,[]);assert.equal(store.observationCount(),1);
+    assert.equal((await app.inject({url:'/api/v1/assets/'+hiddenId,headers})).statusCode,404);
+    assert.equal((await app.inject({url:'/api/v1/jobs/old-0',headers})).statusCode,404);
+    assert.equal((await app.inject({method:'POST',url:'/api/v1/jobs/old-0/cancel',headers,payload:{}})).statusCode,404);
+    assert.equal((await app.inject({method:'POST',url:'/api/v1/jobs',headers,payload:{requestId:'no-demo-route',mode:'initial',scope:['fixture:nas']}})).statusCode,404);
+    const parsed=parseDiscovery(settings({confirmScope:true}),[iface],true);
+    assert.throws(()=>jobs.start('legacy-request-0',parsed.spec),/used previously/);assert.equal(jobs.problem,null);
+    const pending=jobs.start('real-after-legacy-capacity',parsed.spec);jobs.cancel(pending.id);
+    assert.equal((await terminal(()=>store.job(pending.id))).status,'cancelled');
+    assert.equal(store.assets().length,1);
+  } finally {await app.close();}
+  const preserved=new Store(path);
+  try {assert.equal(preserved.observationCount(),3);assert.equal(preserved.jobs().length,201);} finally {preserved.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('system defaults are interface-specific, bounded, single-flight and never guess off-link DNS',async()=>{
+  let calls=0;
+  const reader=createDnsDefaultsReader({platform:'win32',systemServers:()=>['8.8.8.8'],readWindows:async()=>{
+    calls++;await delay(10);return JSON.stringify([{InterfaceAlias:iface.name,ServerAddresses:['192.0.2.53','192.0.2.54','8.8.8.8']}]);
+  }});
+  const [first,second]=await Promise.all([reader([iface]),reader([iface])]);
+  assert.equal(calls,1);assert.equal(first[iface.id].resolver,'192.0.2.53');assert.deepEqual(first,second);
+  assert.equal(first[iface.id].servers[2].supported,false);assert.match(first[iface.id].source,/Windows interface/);
+  assert.throws(()=>parseWindowsDns('bad JSON'));
+  const fallback=createDnsDefaultsReader({platform:'win32',readWindows:async()=>{throw new Error('private diagnostic');},systemServers:()=>['127.0.0.53','8.8.8.8']});
+  const value=(await fallback([iface]))[iface.id];
+  assert.equal(value.resolver,'');assert.equal(value.servers.length,2);assert.match(value.source,/interface read unavailable/);
+});
+
+test('form explains target-by-port budget and rejects invalid tokens without silent widening',()=>{
+  const value=formBudget(iface,iface.cidr,['tcp'],'80,443,8080,8443');
+  assert.equal(value.targets,253);assert.equal(value.attempts,1012);assert.deepEqual(value.errors,[]);
+  const tooMany=formBudget(iface,iface.cidr,['tcp'],'80,443,8080,8443,22');
+  assert.equal(tooMany.attempts,1265);assert.equal(tooMany.maxPorts,4);assert.match(tooMany.errors.join(' '),/at most 4 ports/);
+  assert.ok(formBudget(iface,iface.cidr,['tcp'],'80,invalid').errors.length);
+  assert.equal(formBudget(iface,iface.cidr,['mdns'],'invalid').attempts,0);
+});
+
+test('method diagnostics preserve successful candidates and distinguish completed-with-issues',async()=>{
+  const {app,store,jobs}=createApp({discoveryInterfaces:()=>[iface],discoveryAdapter:new DiscoveryCollector(true,()=>[iface],'method-issues')});
+  try {
+    const {spec}=parseDiscovery(settings({cidr:'192.0.2.0/30',confirmScope:true}),[iface],true);
+    const job=jobs.start('completed-method-issues',spec);
+    const done=await terminal(()=>store.job(job.id));
+    assert.equal(done.status,'completed_with_issues');assert.equal(done.observationsAdded,3);
+    assert.deepEqual(done.discoveryOutcomes![0].issues,['access_denied']);
+    assert.equal(done.discoveryProgress!.addressesCompleted,3);assert.equal(store.assets().length,3);
+    assert.deepEqual(done.errors,[]);
+  } finally {await app.close();}
+  for(const [code,expected] of [['EACCES','access_denied'],['EADDRNOTAVAIL','source_unavailable'],['ETIMEOUT','timeout'],['EREFUSED','refused'],['PRIVATE_UNKNOWN','io_error']]) {
+    assert.equal(networkIssue({code,message:'private diagnostic'}),expected);
+  }
 });

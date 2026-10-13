@@ -74,7 +74,7 @@ export function parseDiscovery(body: unknown, interfaces: readonly DiscoveryInte
     targets.push(ipv4Text(n));
   }
   if (!targets.length) return fail('The scope contains no remote host addresses');
-  if (targets.length * ports.length > 1024) return fail('Reduce targets or ports to at most 1024 TCP connection attempts');
+  if (targets.length * ports.length > 1024) return fail(targets.length + ' targets × ' + ports.length + ' unique ports = ' + (targets.length * ports.length) + ' TCP attempts. Maximum 1024; choose at most ' + Math.floor(1024 / targets.length) + ' ports for this scope, or reduce the CIDR.');
   let resolver: string | null = null;
   if (methods.includes('ptr')) {
     if (typeof input.resolver !== 'string' || !isIPv4(input.resolver)) return fail('Choose the exact IPv4 DNS resolver; no default resolver is used');

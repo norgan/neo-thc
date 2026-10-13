@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
-import { createApp } from '../server/app.js';
-import { IsolatedCollector, proxmoxObservations, type FixtureScenario } from '../server/collector-runner.js';
-import { mockTransport, parseVersion, parseInventory, runProxmox, PVE_OPERATIONS, PROXMOX_TARGET } from '../server/proxmox.mjs';
-import { FixtureCollector, type CollectorAdapter } from '../server/collector.js';
+import { createTestApp as createApp } from './support/app.js';
+import { IsolatedCollector, proxmoxObservations, type FixtureScenario } from './support/collector-runner.js';
+import { mockTransport, parseVersion, parseInventory, runProxmox, PVE_OPERATIONS, PROXMOX_TARGET } from './support/proxmox.mjs';
+import { FixtureCollector } from './support/collector.js';
+import type { CollectorAdapter } from '../server/collector.js';
 import { Store } from '../server/store.js';
 import type { Job, ObservationInput, DiscoveryProgress } from '../shared/types.js';
 
