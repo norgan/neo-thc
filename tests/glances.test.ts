@@ -5,6 +5,8 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import {DatabaseSync} from 'node:sqlite';
 import {glancesRequest,readGlances,normalizeGlances,GLANCES_PATHS,GlancesError,type GlancesTarget} from '../server/glances.js';
 import {createApp} from '../server/app.js';
@@ -102,10 +104,10 @@ test('API preview never connects, read requires exact explicit scope/confirmatio
   const {app,store}=createApp({discoveryInterfaces:()=>[iface],glancesRead:async(_target,path)=>{calls++;return sample[path];}});
   try {
     const id=seed(store),body={requestId:'stats-request-001',scheme:'http',port:61208};
-    const inject=(suffix:string,payload:unknown)=>app.inject({method:'POST',url:'/api/v1/assets/'+id+'/glances/'+suffix,headers,payload});
+    const inject=(suffix:string,payload:Record<string,unknown>)=>app.inject({method:'POST',url:'/api/v1/assets/'+id+'/glances/'+suffix,headers,payload});
     assert.equal((await inject('preview',body)).statusCode,200);assert.equal(calls,0);
     assert.equal((await inject('read',body)).statusCode,400);
-    for(const extra of [{url:'http://198.51.100.1'},{headers:{Authorization:'forbidden'}},{path:'/api/4/all'},{port:0}])
+    for(const extra of [{url:'http://198.51.100.1'},{headers:{Authorization:'forbidden'}},{path:'/api/4/all'},{port:0},{scheme:['https']},{scheme:{toString:'https'}}])
       assert.equal((await inject('read',{...body,confirmed:true,...extra})).statusCode,400);
     assert.equal((await inject('read',{...body,confirmed:true})).statusCode,200);assert.equal(calls,6);
     assert.equal((await inject('read',{...body,confirmed:true})).statusCode,200);assert.equal(calls,6);
@@ -140,5 +142,35 @@ test('additive schema upgrade preserves legacy rows and records genuine stats wi
     try {assert.equal(upgraded.assets().length,1);assert.equal(upgraded.jobs().length,1);assert.deepEqual(upgraded.stats(),[]);}
     finally {upgraded.close();}
     const check=new DatabaseSync(path);assert.equal((check.prepare('PRAGMA user_version').get() as {user_version:number}).user_version,2);check.close();
+  } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+test('environment-proxy mode cannot divert the explicit private-agent transport',async()=>{
+  let proxyCalls=0,targetCalls=0;
+  const proxy=await endpoint((_request,response)=>{proxyCalls++;response.writeHead(502);response.end();});
+  const direct=await endpoint((_request,response)=>{targetCalls++;response.setHeader('Content-Type','application/json');response.end('"4.5.8"');});
+  try {
+    const source=new URL('../server/glances.ts',import.meta.url).href;
+    const script='import {glancesRequest} from '+JSON.stringify(source)+';const result=await glancesRequest('+JSON.stringify(direct.target)+',"/api/4/version",new AbortController().signal);process.stdout.write(JSON.stringify(result));';
+    const sentinel='http://127.0.0.1:'+proxy.target.port;
+    const result=await promisify(execFile)(process.execPath,['--import','tsx','--input-type=module','--eval',script],{
+      timeout:5000,maxBuffer:8192,env:{...process.env,NODE_USE_ENV_PROXY:'1',HTTP_PROXY:sentinel,HTTPS_PROXY:sentinel,
+        http_proxy:sentinel,https_proxy:sentinel,NO_PROXY:'',no_proxy:''},
+    });
+    assert.equal(JSON.parse(result.stdout),'4.5.8');assert.equal(targetCalls,1);assert.equal(proxyCalls,0);
+  } finally {await direct.close();await proxy.close();}
+});
+
+test('failed schema migration rolls back the version and leaves original evidence intact',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'neo-migration-failure-')),path=join(dir,'test.sqlite');
+  try {
+    const first=new Store(path);seed(first);first.close();
+    const db=new DatabaseSync(path);
+    const before=db.prepare('SELECT payload FROM observations').all();
+    db.exec('DROP TABLE stats_snapshots; CREATE INDEX stats_snapshots ON assets(label); PRAGMA user_version=1');db.close();
+    assert.throws(()=>new Store(path));
+    const check=new DatabaseSync(path);
+    assert.equal((check.prepare('PRAGMA user_version').get() as {user_version:number}).user_version,1);
+    assert.deepEqual(check.prepare('SELECT payload FROM observations').all(),before);check.close();
   } finally {await rm(dir,{recursive:true,force:true});}
 });

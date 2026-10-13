@@ -8,7 +8,7 @@ const realEvidence = "json_type(payload, '$.synthetic') = 'false' AND json_extra
 export const isRealObservation = (value: ObservationInput): boolean => value.synthetic === false && value.source === 'discovery-v1';
 export const isRealJob = (job: Job): boolean => job.synthetic !== true && !!job.spec.discovery && job.spec.scope.length === 1 && job.spec.scope[0] === 'discovery:ipv4';
 
-/** Synchronous SQLite is deliberately limited to this small single-process demo. */
+/** Synchronous SQLite is deliberately bounded to this local single-process collector. */
 export class Store {
   private readonly db: DatabaseSync;
 
@@ -20,7 +20,8 @@ export class Store {
       this.db.close();
       throw new Error('Database schema is newer than this application');
     }
-    this.db.exec(
+    this.db.exec('BEGIN IMMEDIATE');
+    try {this.db.exec(
       'CREATE TABLE IF NOT EXISTS assets (' +
       'id TEXT PRIMARY KEY, subject_key TEXT NOT NULL UNIQUE, label TEXT NOT NULL, kind TEXT NOT NULL);' +
       'CREATE TABLE IF NOT EXISTS observations (' +
@@ -30,7 +31,8 @@ export class Store {
       'id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, payload TEXT NOT NULL);' +
       'CREATE TABLE IF NOT EXISTS stats_snapshots (id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, asset_id TEXT NOT NULL REFERENCES assets(id), sampled_at INTEGER NOT NULL, payload TEXT NOT NULL);' +
       'PRAGMA user_version = 2;'
-    );
+    );this.db.exec('COMMIT');}
+    catch(error){try{this.db.exec('ROLLBACK');}finally{this.db.close();}throw error;}
   }
 
   ingest(inputs: ObservationInput[], receivedAt = Date.now()): number {

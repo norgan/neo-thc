@@ -35,3 +35,34 @@ This version does not resolve mDNS instances/SRV/TXT/A into a REST endpoint. Gla
 Tests use isolated loopback HTTP fixtures and explicit injected API seams; no private topology, credentials or physical Glances installation is used in CI. The production smoke exercises the actual compiled transport. Browser tests exercise consent, repeated-click prevention, partial values and responsive presentation. Physical Glances/Windows interoperability remains unverified by this development session.
 
 Official contracts reviewed: [Glances REST API](https://glances.readthedocs.io/en/latest/api/restful.html), [v4.5.8 REST implementation](https://github.com/nicolargo/glances/blob/v4.5.8/glances/outputs/glances_restful_api.py), [system plugin](https://github.com/nicolargo/glances/blob/v4.5.8/glances/plugins/system/__init__.py), [filesystem plugin](https://github.com/nicolargo/glances/blob/v4.5.8/glances/plugins/fs/__init__.py), [dynamic advertisement](https://github.com/nicolargo/glances/blob/v4.5.8/glances/servers_list_dynamic.py).
+
+
+## Windows update and database backup
+
+Schema v2 is additive and applied in one SQLite transaction. Existing observations/jobs are retained. A schema-v1 binary refuses the upgraded database, so save the pre-update database if rollback may be needed. Migration failure rolls back rather than committing a partial version change.
+
+Stop Neo with Ctrl+C and wait for the terminal prompt. Stop every other Neo process using the same database. Do not copy a database while its writer is running, and do not delete WAL/SHM files. In PowerShell, from the same repository directory and environment used to launch Neo:
+
+~~~powershell
+$ErrorActionPreference = 'Stop'
+$db = if ($env:NEO_DB_PATH) { [IO.Path]::GetFullPath($env:NEO_DB_PATH) } else { Join-Path (Get-Location).Path 'data\neo.sqlite' }
+if (!(Test-Path -LiteralPath $db -PathType Leaf)) { throw "Database not found: $db" }
+$backup = Join-Path (Split-Path -Parent $db) ('neo-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $backup -ErrorAction Stop | Out-Null
+foreach ($suffix in @('', '-wal', '-shm')) {
+  $source = $db + $suffix
+  if (Test-Path -LiteralPath $source -PathType Leaf) {
+    $destination = Join-Path $backup ([IO.Path]::GetFileName($source))
+    Copy-Item -LiteralPath $source -Destination $destination -ErrorAction Stop
+    if ((Get-FileHash -LiteralPath $source).Hash -ne (Get-FileHash -LiteralPath $destination).Hash) { throw 'Backup verification failed' }
+  }
+}
+git rev-parse HEAD | Set-Content -LiteralPath (Join-Path $backup 'source-commit.txt')
+Write-Host "Verified stopped-database backup: $backup"
+~~~
+
+The default path is data\neo.sqlite relative to Neo's launch directory. NEO_DB_PATH overrides it; a relative override is also resolved from that directory. Clean shutdown normally checkpoints/removes sidecars. The script copies any remaining -wal/-shm together with the main file into a new unique directory and verifies bytes; never overwrite or omit a remaining WAL.
+
+Then update using git pull --ff-only origin feat/initial-foundation, npm.cmd ci, npm.cmd run build and npm.cmd start. Check the visible semantic-inventory-v3 marker.
+
+For rollback, stop Neo again. Preserve the upgraded database separately. Use the saved source commit in a separate checkout and a fresh copy of the entire backup file set in a new directory; set NEO_DB_PATH to that restored main file before starting the old build. Do not overwrite the only backup, combine old/new sidecars, or point the old binary at the upgraded database. The backup restores only the information present at backup time; subsequent scans/snapshots remain in the preserved upgraded copy.

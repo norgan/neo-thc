@@ -58,7 +58,7 @@ export function resolveGlancesTarget(store:Store,assetId:string,body:unknown,con
   const input=body as Record<string,unknown>;
   if(Object.keys(input).some((key)=>!['requestId','scheme','port','confirmed'].includes(key))||
     typeof input.requestId!=='string'||!/^[a-zA-Z0-9-]{8,80}$/.test(input.requestId)||
-    !['http','https'].includes(String(input.scheme))||typeof input.port!=='number'||!Number.isInteger(input.port)||input.port<1||input.port>65535)
+    (typeof input.scheme!=='string'||!['http','https'].includes(input.scheme))||typeof input.port!=='number'||!Number.isInteger(input.port)||input.port<1||input.port>65535)
     throw new RequestError(400,'Choose an explicit HTTP/HTTPS scheme and one valid port. No URL, credentials or custom path is accepted.');
   if(confirm&&input.confirmed!==true)throw new RequestError(400,'Review and confirm this exact stats endpoint first.');
   const asset=store.assets().find((row)=>row.id===assetId),observation=asset?.latest;
