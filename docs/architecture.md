@@ -4,7 +4,7 @@
 
 A single local Node 24 process serves the Fastify API and production React files. SQLite records assets, immutable normalized observations, and job snapshots. A compiled-in FixtureCollector produces documented synthetic examples without any network or OS discovery calls. The browser polls a snapshot every two seconds without overlapping its own polls.
 
-This is the first source draft. It has not been executed. The wider requirements remain in requirements.md.
+The first GitHub Actions run passed typechecks, 13 synthetic tests and production build. See testing.md and current PR checks for exact scope and commit. Production startup and browser behavior remain unverified. The wider requirements remain in requirements.md.
 
 ### Main modules
 
@@ -100,4 +100,4 @@ Official sources reviewed while authoring:
 - [React 19.2.0](https://github.com/facebook/react/releases/tag/v19.2.0): browser React / react-dom pair. This app does not use React Server Components.
 - [TypeScript 5.9.3](https://github.com/microsoft/TypeScript/releases/tag/v5.9.3) and [tsx 4.20.6](https://github.com/privatenumber/tsx/releases/tag/v4.20.6).
 
-Exact direct pins and compatible major contracts do not establish a passing install, compilation or vulnerability audit. All runtime verification is outstanding.
+Exact direct pins alone do not establish compatibility or safety. GitHub CI subsequently passed installation, typechecks, 13 synthetic tests and build; npm installation reported zero known vulnerabilities for its resolved set. Browser/startup checks and a committed generated lockfile remain outstanding.

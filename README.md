@@ -5,9 +5,9 @@
 
 A local-first companion for understanding a home network and homelab through one responsive desktop and mobile web interface.
 
-## Status: source-only fixture foundation
+## Status: fixture foundation with passing automated checks
 
-This branch contains an initial TypeScript / Fastify / SQLite / React implementation and automated test source. **The initial authoring pass ran no application code. A GitHub Actions check has now been added at the owner's request; see the PR checks for execution status. Browser testing and deployment remain UNRUN.** Treat this as a reviewable, testable draft, not a verified release.
+This branch contains an initial TypeScript / Fastify / SQLite / React implementation. **GitHub Actions passed installation, typechecks, all 13 synthetic tests, and production build** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38331197087), source head 1de403e). See the current PR checks for later commits. Browser QA, production startup and deployment remain UNRUN. Treat this as a testable foundation, not a verified end-to-end release.
 
 All device data is synthetic. “Initial” performs one fixture pass; “live” periodically repeats fixture observations. Neither mode scans the network, queries DNS, connects to platforms, reads local network interfaces, or collects credentials.
 
@@ -27,7 +27,7 @@ npm start
 
 Then open **http://127.0.0.1:4318**. Select demo systems in Overview and choose **Collect initial fixtures**. Use Inventory / System for evidence and Activity for progress or cancellation.
 
-These are instructions for you to run; they have not been executed here. The first install downloads npm packages. Exact direct versions are pinned; transitive resolution is not locked yet. No lockfile has been fabricated. After a successful install and review, commit the npm-generated lockfile before treating installs as reproducible. Use `npm install`, not `npm ci`, for this first setup.
+These are local setup instructions. CI has checked installation, types, tests and build; local startup still needs verification. Installation downloads npm packages. Exact direct versions are pinned; transitive resolution is not locked yet. No lockfile has been fabricated. After a successful install and review, commit the npm-generated lockfile before treating installs as reproducible. Use `npm install`, not `npm ci`, for this first setup.
 
 ## Development
 
@@ -73,7 +73,7 @@ Database: `data/neo.sqlite` by default; an explicit `NEO_DB_PATH` environment va
 
 ## Next milestones
 
-1. Run and fix the documented checks; commit a real lockfile and review package audit output.
+1. Complete startup/browser checks and commit a real generated lockfile. CI installation reported zero known vulnerabilities for its resolved dependency set; this is not a security guarantee.
 2. Add isolated collectors, runtime result schemas and version-aware read-only adapter allowlists.
 3. Implement explicitly approved scopes and first UniFi / OPNsense / Proxmox adapters.
 4. Build evidence-backed dependencies, guarded DNS diagnostics and resumable recommendations that show executive-function burden.

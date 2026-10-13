@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createApp } from '../server/app.js';
 import { FixtureCollector, type CollectorAdapter } from '../server/collector.js';
-import { JobManager, parseSubmission } from '../server/jobs.js';
+import { JobManager, parseSubmission, RequestError } from '../server/jobs.js';
 import { Store } from '../server/store.js';
 import type { Job, ObservationInput } from '../shared/types.js';
 
@@ -259,9 +259,10 @@ test('background persistence failures are consumed and collection fails closed',
     const parsed = parseSubmission(submission(), targets);
     const job = manager.start(parsed.requestId, parsed.spec);
     await delay(10);
-    await manager.shutdown();
     assert.match(manager.problem ?? '', /could not be saved/);
     assert.equal(store.job(job.id)!.status, 'queued', 'Do not claim a terminal state was persisted');
-    assert.throws(() => manager.start('request-after-failure', parsed.spec));
+    assert.throws(() => manager.start('request-after-failure', parsed.spec),
+      (error: unknown) => error instanceof RequestError && error.statusCode === 503 && /could not be saved/.test(error.message));
+    await manager.shutdown();
   } finally { store.close(); }
 });
