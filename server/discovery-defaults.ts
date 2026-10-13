@@ -32,8 +32,9 @@ export function parseWindowsDns(raw: string): Map<string, string[]> {
 export function createDnsDefaultsReader(deps: {
   platform?: string; readWindows?: ()=>Promise<string>; systemServers?: ()=>string[]; now?: ()=>number;
 } = {}) {
-  let cached: {expires:number; windows:Map<string,string[]>|null; system:string[]; failed:boolean}|null=null;
-  let pending: Promise<NonNullable<typeof cached>>|null=null;
+  type Configuration={expires:number;windows:Map<string,string[]>|null;system:string[];failed:boolean};
+  let cached:Configuration|null=null;
+  let pending:Promise<Configuration>|null=null;
   const now=deps.now??Date.now;
   return async (interfaces: DiscoveryInterface[]): Promise<Record<string,DiscoveryDefaults>> => {
     if(!cached || cached.expires<=now()) {
@@ -48,11 +49,13 @@ export function createDnsDefaultsReader(deps: {
       })();
       try {cached=await pending;} finally {pending=null;}
     }
+    const config=cached;
+    if(!config)throw new Error('DNS configuration unavailable');
     const result:Record<string,DiscoveryDefaults>={};
     for(const iface of interfaces) {
-      const specific=cached.windows?.get(iface.name.toLowerCase());
-      const addresses=specific??cached.system;
-      const source=specific?'Windows interface DNS configuration':cached.failed
+      const specific=config.windows?.get(iface.name.toLowerCase());
+      const addresses=specific??config.system;
+      const source=specific?'Windows interface DNS configuration':config.failed
         ?'System-wide DNS configuration (interface read unavailable)':'System-wide DNS configuration';
       const link=cidrRange(iface.cidr);
       const servers=addresses.map((address)=>{
