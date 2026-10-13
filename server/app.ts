@@ -1,7 +1,8 @@
 import Fastify from 'fastify';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { FixtureCollector, type CollectorAdapter } from './collector.js';
+import type { CollectorAdapter } from './collector.js';
+import { IsolatedCollector } from './collector-runner.js';
 import { JobManager, parseSubmission, RequestError } from './jobs.js';
 import { Store } from './store.js';
 
@@ -10,7 +11,7 @@ const allowedOrigins = new Set([...allowedHosts].map((host) => 'http://' + host)
 
 export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number } = {}) {
   const store = new Store(options.dbPath);
-  const adapter = options.adapter ?? new FixtureCollector();
+  const adapter = options.adapter ?? new IsolatedCollector();
   const jobs = new JobManager(store, adapter, options.probeTimeoutMs);
   const app = Fastify({ logger: false, bodyLimit: 8_192, requestTimeout: 10_000, trustProxy: false });
 

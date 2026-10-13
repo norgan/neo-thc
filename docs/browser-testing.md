@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-Browser test source has been added; read the current PR workflow for the actual execution result. The earlier foundation checks passed without a browser.
+**Passed:** the 10-case desktop/mobile Chromium baseline at source head 982d34d3627d0afd7ad340100660d991a6c87004 in [run 38333033553](https://github.com/norgan/neo-thc/actions/runs/38333033553) on 13 October 2026. Successful desktop inventory and mobile evidence screenshots were also visually inspected. The collector milestone adds a sixth case per viewport; read current PR checks for its result.
 
 Pinned Microsoft Playwright 1.64.0 runs bundled Chromium on a GitHub-hosted Linux runner. The direct version and Node >=20 contract were checked against the [official package](https://github.com/microsoft/playwright/blob/v1.64.0/packages/playwright-test/package.json) and [release](https://github.com/microsoft/playwright/releases/tag/v1.64.0). Node 24 remains the application runtime.
 
@@ -17,6 +17,8 @@ Each case gets a fresh production server and temporary SQLite database. Cases ru
 3. Hold submission response while attempting repeated clicks; verify one job. Navigate during live collection, cancel, preserve inventory, and permit later work.
 4. Simulate API network failure in the browser. Preserve visible inventory with an explicit stale-data warning; retry and recover without submitting another job. Capture error-state screenshot.
 5. Named navigation, form labels, main/heading structure, live-status region, keyboard focus and activation, selected navigation state, no document overflow at either viewport, and explicit planned Connections/DNS boundaries.
+
+6. Opt in to the simulated Proxmox target, collect its five resources, verify four unknown/one stopped health projections and inspect permission-filtered provenance; capture evidence screenshot.
 
 Every case rejects uncaught browser errors and blocks/reports attempted external app requests. All app traffic is to the runner's 127.0.0.1 fixture API. Screenshots and traces contain only synthetic fixtures.
 

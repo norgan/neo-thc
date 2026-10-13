@@ -7,7 +7,7 @@ A local-first companion for understanding a home network and homelab through one
 
 ## Status: fixture foundation with passing automated checks
 
-This branch contains an initial TypeScript / Fastify / SQLite / React implementation. **GitHub Actions passed installation, typechecks, all 13 synthetic tests, production build, and a production-startup smoke check** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38331806414), source head 48beb6b). The smoke check covers npm start, loopback health, built HTML/JS/CSS, initial fixture collection, inventory and graceful shutdown. See current PR checks for later commits. Browser QA and deployment remain UNRUN. Treat this as a testable foundation, not a verified end-to-end release.
+This branch contains a TypeScript / Fastify / SQLite / React foundation. **The browser baseline passed 13 unit tests, 10 desktop/mobile Chromium cases, typechecks, production build and startup smoke** on 13 October 2026 ([recorded run](https://github.com/norgan/neo-thc/actions/runs/38333033553), source head 982d34d). The new isolated-collector milestone adds tests and compiled-worker smoke coverage; read current PR checks for its actual result. Physical-device QA, comprehensive accessibility review, real integrations and deployment remain unverified.
 
 All device data is synthetic. “Initial” performs one fixture pass; “live” periodically repeats fixture observations. Neither mode scans the network, queries DNS, connects to platforms, reads local network interfaces, or collects credentials.
 
@@ -46,9 +46,10 @@ Commands:
 - `npm run build`: TypeScript server output plus Vite browser build
 - `npm run check`: typecheck, tests, then build
 - `npm run smoke`: Linux-only bounded production-startup/API check, after build; uses a temporary database and port 4318
+- `npm run test:browser`: desktop/mobile Chromium fixture flows, after browser installation and build
 - `npm start`: serve the built app and API on 127.0.0.1:4318
 
-Run build before start, and run all commands from the root. UI layout, keyboard behavior and repeated interactions still need the [manual checks](docs/testing.md).
+Run build before start, and run all commands from the root. Desktop/mobile Chromium checks cover core flows, keyboard basics, repeated actions and API recovery. See [browser coverage and limits](docs/browser-testing.md) and remaining [manual checks](docs/testing.md).
 
 ## What is included
 
@@ -59,14 +60,17 @@ Run build before start, and run all commands from the root. UI layout, keyboard 
 - Healthy, unhealthy, stopped, unknown and stale examples; synthetic failed NFS with healthy ping/SMB
 - One bounded job at a time: explicit fixture scope/exclusions, progress, idempotency keys, cancellation, total/per-target deadlines
 - Initial one-pass and live periodic-fixture modes; partial results and restart recovery
-- SQLite persistence; an in-process adapter interface with no device-changing operations
+- SQLite persistence; a bounded adapter interface with no device-changing operations
+- One killable built-in worker per target; fixed mocked Proxmox version/node/guest operations, parent-validated batches and retained partial evidence
 - Automated test source for identity, freshness, API validation, job lifecycle and persistence
 
 ## Boundaries and limits
 
 The API binds only to 127.0.0.1. It has Host/Origin checks and a custom local-client header for mutations, but **no user authentication**. Do not expose it through a public/LAN proxy, tunnel, container port mapping, or shared host. Those guards do not protect against malicious local processes. Mobile layouts can be inspected using desktop responsive emulation; remote phone access is not enabled.
 
-One trusted, synthetic adapter is compiled in. Async timeouts ignore late results, but this is **not** worker/process isolation and cannot interrupt a CPU-blocking adapter. No real adapter may be enabled before isolation, runtime result validation, permission checks, secret handling and operation allowlists are implemented.
+Only trusted synthetic collectors are compiled in. The optional “Simulated Proxmox inventory” target models one installation using an exact synthetic 8.4.22 profile. It never contacts a platform. Running/online states remain unknown service health, and empty permission-filtered lists never erase prior assets. See [collector boundaries](docs/collector-isolation.md).
+
+Each target runs through a fixed Node worker with deadlines, termination, empty environment and no inherited preloads. This isolates trusted-code hangs, not hostile code or OS capabilities; Node resource limits exclude ArrayBuffers and global out-of-memory failures. No real transport, plugin loader or credential surface is provided.
 
 Storage is capped at 200 jobs and 10,000 observations. It does not silently delete historical evidence. When capacity is reached, collection fails with retained prior data. Each System response includes at most the latest 100 observations. No automatic retention, export, encrypted database, cross-source identity reconciliation, dependency graph or migration beyond schema v1 is provided.
 
@@ -74,9 +78,9 @@ Database: `data/neo.sqlite` by default; an explicit `NEO_DB_PATH` environment va
 
 ## Next milestones
 
-1. Complete browser, accessibility and local-platform checks. CI installation reported zero known vulnerabilities for its resolved dependency set; this is not a security guarantee.
-2. Add isolated collectors, runtime result schemas and version-aware read-only adapter allowlists.
-3. Implement explicitly approved scopes and first UniFi / OPNsense / Proxmox adapters.
+1. Extend accessibility, physical-device, cross-browser and local-platform verification.
+2. Review isolation and permission/version contracts before introducing any real transport.
+3. Design explicitly approved scopes and real UniFi / OPNsense / Proxmox adapters with secure credential handling.
 4. Build evidence-backed dependencies, guarded DNS diagnostics and resumable recommendations that show executive-function burden.
 5. Assess QNAP / Nextcloud compatibility and optional endpoint-agent design.
 

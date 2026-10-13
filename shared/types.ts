@@ -66,6 +66,7 @@ export interface Job {
 export interface FixtureTarget {
   key: string;
   label: string;
+  defaultSelected?: boolean;
 }
 export interface Snapshot {
   synthetic: true;

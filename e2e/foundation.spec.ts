@@ -132,7 +132,7 @@ test('API interruption marks displayed data stale and retry recovers without dup
 test('navigation, labels, keyboard focus and mobile layout expose the fixture boundary', async ({ page }, info) => {
   await page.goto('/');
   await expect(page.getByRole('group', { name: 'Explicit fixture scope' })).toBeVisible();
-  await expect(page.getByRole('checkbox')).toHaveCount(6);
+  await expect(page.getByRole('checkbox')).toHaveCount(7);
   await expect(page.getByRole('main')).toHaveCount(1);
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.locator('[aria-live="polite"]')).toHaveCount(1);
@@ -154,4 +154,22 @@ test('navigation, labels, keyboard focus and mobile layout expose the fixture bo
   await nav(page, 'DNS').click();
   await expect(page.getByText('No DNS queries are performed.', { exact: false })).toBeVisible();
   await screenshot(page, info, 'planned-dns');
+});
+
+test('simulated Proxmox inventory is opt-in and platform availability stays uncertain', async ({ page }, info) => {
+  await page.goto('/');
+  const simulated = page.getByRole('checkbox', { name: 'Simulated Proxmox inventory', exact: true });
+  await expect(simulated).not.toBeChecked();
+  for (const checkbox of await page.getByRole('checkbox').all()) await checkbox.uncheck();
+  await simulated.check();
+  await initial(page);
+  await nav(page, 'Inventory').click();
+  await expect(page.locator('.asset-grid article')).toHaveCount(5);
+  await expect(page.locator('.asset-grid .badge.unknown')).toHaveCount(4);
+  await expect(page.locator('.asset-grid .badge.stopped')).toHaveCount(1);
+  const guest = page.locator('.asset-grid article').filter({ has: page.getByRole('heading', { name: 'Demo application VM', exact: true }) });
+  await guest.getByRole('button', { name: 'Inspect system' }).click();
+  await expect(page.getByText('Permission-filtered coverage: completeness unknown.', { exact: false }).first()).toBeVisible();
+  await expect(page.getByText('proxmox-fixture-v1', { exact: true }).first()).toBeVisible();
+  await screenshot(page, info, 'simulated-proxmox-evidence');
 });

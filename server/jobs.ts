@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { CollectorAdapter, CollectionContext } from './collector.js';
+import { observationAllowed, type CollectorAdapter, type CollectionContext } from './collector.js';
 import type { Job, JobSpec, JobStatus, ObservationInput } from '../shared/types.js';
 import { MAX_JOBS, Store } from './store.js';
 
@@ -50,10 +50,11 @@ export function parseSubmission(body: unknown, allowed: readonly string[]): { re
   return { requestId: value.requestId, spec };
 }
 
-/** Bounds an async adapter call. Synchronous CPU loops require a future worker process. */
+/** Production uses the killable worker runner; async fallback serves trusted test doubles. */
 async function collectWithDeadline(
   adapter: CollectorAdapter, target: string, context: CollectionContext, timeoutMs: number,
 ): Promise<ObservationInput[]> {
+  if (adapter.isolated) return adapter.collect(target, { ...context, timeoutMs });
   const child = new AbortController();
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -89,7 +90,7 @@ export class JobManager {
   get problem(): string | null {
     return this.storageFailed
       ? 'Job state could not be saved. Collection is disabled; activity may be incomplete. Check local storage and restart Neo.'
-      : null;
+      : this.adapter.problem ?? null;
   }
 
   private persist(job: Job): void {
@@ -161,17 +162,21 @@ export class JobManager {
         for (const target of targets) {
           signal.throwIfAborted();
           try {
+            const ingest = (observations: ObservationInput[]) => {
+              signal.throwIfAborted();
+              if (observations.length > 100 || observations.some((item) => !observationAllowed(target, item))) {
+                throw new Error('Adapter returned an invalid result');
+              }
+              job.observationsAdded += this.store.ingest(observations);
+              this.persist(job);
+            };
             const observations = await collectWithDeadline(this.adapter, target,
-              { signal, now: Date.now(), cycle }, this.probeTimeoutMs);
+              { signal, now: Date.now(), cycle, onBatch: ingest }, this.probeTimeoutMs);
             signal.throwIfAborted();
-            // Fixed trusted fixture adapter only; future adapters need runtime schemas and isolation.
-            if (observations.length > 20 || observations.some((item) => item.subjectKey !== target || item.source !== this.adapter.id)) {
-              throw new Error('Adapter returned an invalid result');
-            }
-            job.observationsAdded += this.store.ingest(observations);
+            if (observations.length) ingest(observations);
           } catch {
             if (signal.aborted) throw new Error('Job stopped');
-            if (job.errors.length < 20) job.errors.push('One fixture collection failed or timed out; prior evidence remains unchanged.');
+            if (job.errors.length < 20) job.errors.push('One synthetic collection failed or timed out; useful partial results and prior evidence were retained.');
           }
           job.completedTargets++;
           this.persist(job);

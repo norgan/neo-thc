@@ -2,7 +2,9 @@
 
 ## Current status
 
-**Passed in GitHub Actions:** dependency installation, server/browser typechecks, all 13 synthetic tests, server/browser production build, and Linux production-startup smoke.
+**Passed baseline in GitHub Actions:** locked dependency installation, server/browser typechecks, 13 synthetic unit tests, 10 desktop/mobile Chromium cases, production build and Linux production-startup smoke at [head 982d34d](https://github.com/norgan/neo-thc/actions/runs/38333033553). The collector milestone adds 13 unit cases, two browser cases and compiled-worker smoke checks; its result is in current PR checks.
+
+Historical foundation evidence follows:
 
 [Verified run 38331806414](https://github.com/norgan/neo-thc/actions/runs/38331806414), 13 October 2026, source head 48beb6be37113498973eb3a9c840cc599ace6434. GitHub tested the PR merge ref against main 47439e3. Environment: Ubuntu 24.04.5, Node 24.21.0, npm 11.19.0. Tests: 13 passed, 0 failed/skipped.
 
@@ -10,7 +12,7 @@ The separate smoke script starts the actual `npm start` command with an isolated
 
 Installation audited 77 resolved packages and reported 0 vulnerabilities. A separate `npm audit` command was not run. npm warned about two esbuild install scripts lacking allowScripts entries; typechecks, tests and build still succeeded. No broad install-script approval was added.
 
-**Verification boundary:** desktop/mobile Chromium test source is now present; see [browser testing](browser-testing.md) and current CI for its result. Non-Linux/local-machine verification, physical devices, comprehensive accessibility review, real integrations, real scans and deployment remain unverified. Read current PR checks for the latest commit; the recorded run above is immutable evidence, not a claim about every later commit.
+**Verification boundary:** the baseline desktop/mobile Chromium cases passed; see [browser testing](browser-testing.md) for exact coverage. Non-Linux/local-machine verification, physical devices, comprehensive accessibility review, real integrations, real scans and deployment remain unverified. Read current PR checks for the latest commit; the recorded run above is immutable evidence, not a claim about every later commit.
 
 Source was authored and published through the GitHub connector. No local executor or Work task ran repository code. The owner requested GitHub Actions testing. CI has read-only repository permission, no configured repository-secret references, and performs only fixture/loopback checks.
 
@@ -66,7 +68,7 @@ tests/foundation.test.ts uses node:test, strict assertions, Fastify injection an
 12. Unknown thrown values, invalid status-code types and redacted diagnostic payloads
 13. Background SQLite write failures do not reject unhandled; collection fails closed and reports incomplete state
 
-Tests do not prove hard isolation from synchronous CPU hangs. No real adapter exists. The first CI run passed; timing checks still need observation across later environments and repeated runs.
+The new tests/collector.test.ts adds fixed mock operations, version/schema gates, migration identity, permission-filtered empty/error responses, health/freshness semantics, source-mode worker startup, synchronous CPU and promise hangs, crash/early exit, forged/duplicate/late messages, cancellation, whole-job timeout, shutdown and scope exclusion checks. Production smoke also runs the emitted .mjs worker through npm start. These prove only the exercised trusted-fixture boundaries; no real transport or hostile-code sandbox exists.
 
 ## Manual browser checks
 
@@ -88,7 +90,7 @@ Open http://127.0.0.1:4318 after build/start, or port 5173 using both developmen
 - Narrow 375 px viewport and desktop: no horizontal content overflow, controls usable, text legible.
 - Keyboard only: all tabs, forms, details, and cancellation reachable; focus visible; status not conveyed by color alone.
 - Scope selection survives reload. Storage-disabled browsing still works without preference persistence.
-- Connections and DNS remain visibly planned. No credential fields, real probes or integration claims appear.
+- Connections and DNS remain visibly planned. The simulated Proxmox inventory is explicitly labelled; no credential fields or real probes appear.
 - Production asset paths and Content-Security-Policy allow the built JS/CSS to load.
 
 Record actual command outputs, environment versions, browser and failures before changing any remaining UNRUN status.

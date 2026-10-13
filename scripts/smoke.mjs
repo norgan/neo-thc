@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -57,6 +57,8 @@ async function portIsClosed() {
 }
 
 try {
+  await access('dist/server/server/collector-worker.mjs');
+  await access('dist/server/server/proxmox.mjs');
   assert.ok(await portIsClosed(), 'Port 4318 must be unused before this smoke check');
   server = spawn('npm', ['start'], {
     detached: true,
@@ -115,7 +117,19 @@ try {
   assert.equal(inventory.synthetic, true);
   assert.equal(inventory.assets.length, 2);
   assert.ok(inventory.assets.some((asset) => asset.kind === 'storage' && asset.health === 'unhealthy'));
-  console.log('PASS: npm start, loopback health, production HTML/JS/CSS, initial fixture job and inventory');
+  const platform = await (await api('/api/v1/jobs', {
+    method: 'POST', body: JSON.stringify({ requestId: 'pve-smoke-' + randomUUID(), mode: 'initial', scope: ['fixture:proxmox-lab'] }),
+  })).json();
+  await until(async () => {
+    job = (await (await api('/api/v1/jobs/' + encodeURIComponent(platform.job.id))).json()).job;
+    return !['queued', 'running'].includes(job.status);
+  }, 10_000, 'Compiled Proxmox worker did not finish');
+  assert.equal(job.status, 'completed');
+  assert.equal(job.observationsAdded, 5);
+  const enriched = await (await api('/api/v1/assets')).json();
+  assert.equal(enriched.assets.length, 7);
+  assert.equal(enriched.assets.filter((asset) => asset.latest.source === 'proxmox-fixture-v1').length, 5);
+  console.log('PASS: npm start, loopback health, production HTML/JS/CSS, fixture jobs and compiled Proxmox worker');
 } catch (error) {
   failed = true;
   console.error('FAIL: production smoke check:', error.message);

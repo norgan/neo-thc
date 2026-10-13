@@ -5,11 +5,15 @@ export interface CollectionContext {
   signal: AbortSignal;
   now: number;
   cycle: number;
+  timeoutMs?: number;
+  onBatch?: (observations: ObservationInput[]) => void;
 }
 
 /** No credentials, configuration, execution, or remediation operations exist here. */
 export interface CollectorAdapter {
   readonly id: string;
+  readonly isolated?: true;
+  readonly problem?: string | null;
   readonly capabilities: readonly ['fixture-observations'];
   readonly targets: readonly FixtureTarget[];
   collect(target: string, context: CollectionContext): Promise<ObservationInput[]>;
@@ -30,8 +34,14 @@ export class FixtureCollector implements CollectorAdapter {
   readonly targets = fixtureTargets;
 
   async collect(target: string, context: CollectionContext): Promise<ObservationInput[]> {
+    return fixtureObservations(target, context);
+  }
+}
+
+/** Trusted synthetic timestamp policy preserves the historical address example. */
+export function fixtureObservations(target: string, context: CollectionContext): ObservationInput[] {
     context.signal.throwIfAborted();
-    const found = this.targets.find((item) => item.key === target);
+    const found = fixtureTargets.find((item) => item.key === target);
     if (!found) throw new Error('Unsupported fixture target');
     const status: Health = target === 'fixture:nas' ? 'unhealthy'
       : target === 'fixture:vm' ? 'stopped'
@@ -41,7 +51,7 @@ export class FixtureCollector implements CollectorAdapter {
       { name: 'SMB', status: 'healthy', note: 'Synthetic protocol response.' },
       { name: 'NFS', status: 'unhealthy', note: 'Synthetic NFS failure. Root cause is unknown.' },
     ] : [];
-    const index = this.targets.findIndex((item) => item.key === target);
+    const index = fixtureTargets.findIndex((item) => item.key === target);
     const isLease = target.endsWith('lease');
     const observedAt = target === 'fixture:old-lease' ? context.now - 120_000 : context.now;
     return [{
@@ -49,7 +59,7 @@ export class FixtureCollector implements CollectorAdapter {
       subjectKey: target,
       label: found.label,
       kind: target === 'fixture:nas' ? 'storage' : target === 'fixture:vm' ? 'virtual-machine' : 'device',
-      source: this.id,
+      source: 'fixture-v1',
       vantage: 'synthetic-local-demo',
       observedAt,
       ttlMs: 60_000,
@@ -63,5 +73,13 @@ export class FixtureCollector implements CollectorAdapter {
       ],
       services,
     }];
+}
+
+export function observationAllowed(target: string, observation: ObservationInput): boolean {
+  if (target === 'fixture:proxmox-lab') {
+    return observation.source === 'proxmox-fixture-v1' &&
+      /^demo-lab\/(node\/[a-zA-Z0-9.-]+|(?:qemu|lxc)\/[1-9][0-9]*)$/.test(observation.subjectKey);
   }
+  return fixtureTargets.some((item) => item.key === target) &&
+    observation.source === 'fixture-v1' && observation.subjectKey === target;
 }

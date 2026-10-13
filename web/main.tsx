@@ -69,12 +69,13 @@ function App() {
         if (!initialized.current) {
           initialized.current = true;
           const allowed = next.targets.map((target) => target.key);
+          const defaults = next.targets.filter((target) => target.defaultSelected !== false).map((target) => target.key);
           try {
             const saved = JSON.parse(localStorage.getItem('neo-demo-selection') ?? 'null') as unknown;
             if (Array.isArray(saved) && saved.every((item) => typeof item === 'string' && allowed.includes(item))) {
               setScope([...new Set(saved as string[])]);
-            } else setScope(allowed);
-          } catch { setScope(allowed); }
+            } else setScope(defaults);
+          } catch { setScope(defaults); }
         }
       } catch {
         if (!controller.signal.aborted) setLoadError('The local API is unavailable. Displayed information may be out of date. Start the API, then retry.');
