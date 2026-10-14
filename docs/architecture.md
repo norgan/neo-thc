@@ -1,6 +1,6 @@
 ## Current runtime correction
 
-The production app is real-only (semantic-inventory-v3): Discovery/Systems/System/Activity, no fixture collection route. Synthetic legacy database rows are retained but excluded before evidence projection, ambiguity summaries and capacity checks. Tests inject fixtures from tests/support; production build excludes that directory. Interface/CIDR/DNS defaults come from bounded local configuration reads, never network queries. Method diagnostics are host-validated and partial completion remains explicit.
+The production app is real-only (network-overview-v4): NOC/Systems/Network/System/Activity/Settings, with discovery in a secondary modal and no fixture collection route. Optional existing Glances enrichment is part of the reviewed discovery job only when explicitly enabled. Synthetic legacy database rows are retained but excluded before evidence projection, ambiguity summaries and capacity checks. Tests inject fixtures from tests/support; production build excludes that directory. Interface/CIDR/DNS defaults come from bounded local configuration reads, never network queries. Method diagnostics are host-validated and partial completion remains explicit.
 
 # Foundation architecture and collector extension
 
@@ -8,27 +8,29 @@ The production app is real-only (semantic-inventory-v3): Discovery/Systems/Syste
 
 A single local Node 24 process serves the Fastify API and production React files. SQLite records assets, immutable normalized observations, and job snapshots. The default DiscoveryCollector uses fixed scoped TCP/DNS/UDP operations; opening the UI or previewing scope sends no probes. The browser polls a snapshot every two seconds without overlapping its own polls.
 
-GitHub Actions passed the collector milestone (26 unit tests, 12 desktop/mobile Chromium cases, typechecks, production build and compiled-worker startup smoke). A late-callback review regression extends the unit suite to 27; see current PR checks and testing.md for exact head results. The wider requirements remain in requirements.md.
+The original collector milestone passed 26 unit tests and 12 desktop/mobile Chromium cases. The 14 October continuation passed 74 unit tests, 28 browser cases, typechecks and build locally on Windows; see [testing](testing.md) and current PR checks for exact evidence and operating-system limits. The wider requirements remain in requirements.md.
 
 ### Main modules
 
 - shared/types.ts: API model, evidence, identities and job lifecycle
-- server/collector.ts: narrow adapter contract and six deterministic scenarios
-- server/collector-runner.ts: fixed worker lifecycle, parent validation and trusted provenance
-- server/collector-worker.mjs and server/proxmox.mjs: checked-JavaScript worker, pure normalizer and fixed mock operation plan
+- server/collector.ts: narrow adapter contract; deterministic collectors live under tests/support
+- server/discovery-runner.ts and discovery-worker.mjs: fixed real worker lifecycle, parent validation and trusted provenance
+- server/discovery-scope.ts, discovery-network.mjs and discovery-protocols.mjs: scope/budget validation, bounded real transports and packet parsers
+- server/glances-enrichment.ts, glances-mdns.mjs and glances-worker.mjs: consented bounded endpoint resolution, revalidation and enrichment
+- server/glances.ts: fixed six-path, source-bound HTTP/HTTPS stats transport and normalization
 - server/store.ts: SQLite schema v2 (additive transactional stats history), transactional observation writes, source-scoped identity and evidence projection
 - server/jobs.ts: input validation, idempotent submission, concurrency slot, bounded scheduler and cancellation
 - server/app.ts: loopback-facing API and built static files; sanitized errors and browser-origin guards
 - server/main.ts: fixed loopback listener, database path and shutdown
-- web/main.tsx: responsive inventory/evidence UI, explicit fixture controls, saved selection and planned-feature screens
-- scripts/smoke.mjs: bounded Linux CI check of npm start, production assets, fixture collection and clean shutdown
+- web/main.tsx, Discovery.tsx and SystemStats.tsx: NOC, systems/network/evidence views, consented discovery modal and stats controls
+- scripts/smoke.mjs: bounded Linux CI check of npm start, production assets, actual compiled loopback TCP/Glances transports and clean shutdown
 
 ## Approved deployment direction; implementation remains local
 
 Agentless collection is the default product direction: use permitted APIs and read-only protocols wherever possible. A site collector is an application component, not a mandatory per-device agent. Endpoint agents are optional only for capabilities unavailable agentlessly, with an explicit capability/privilege explanation.
 
 Two modes are intended:
-1. **Colocated:** collector, local API/storage and served interface installed together. The current fixture application is a local-only starting point for this mode.
+1. **Colocated:** collector, local API/storage and served interface installed together. The current real-only application implements the local starting point for this mode.
 2. **Split:** collector stays on-premises; the interface is hosted remotely. This does not by itself choose a remote API, remote storage or a remote control plane.
 
 See [deployment modes and trust boundary](deployment-modes.md) for the decision record. Managed-system credentials stay at the collector. The proposed connection is collector-initiated, authenticated and encrypted, with explicit pairing/site identity and collector-enforced scopes. Any hosted scheduling would submit bounded authorized job requests, never arbitrary commands or scans. Offline buffering, backpressure, replay-safe reconnection, data recipients/retention and revocation must be designed and reviewed first.
@@ -37,7 +39,7 @@ The current executable has no pairing, remote channel, remote authentication or 
 
 ## Discovery vertical slice
 
-See [explicit-scope discovery](discovery.md). The separate Discovery screen and /api/v1/discovery options/preview/jobs routes never use the fixture submission path. The server enumerates eligible local IPv4 interfaces for user selection and normalizes a bounded on-link CIDR/method/port plan. The shared JobManager maintains one global active slot.
+See [explicit-scope discovery](discovery.md). The discovery modal and /api/v1/discovery options/preview/jobs routes never use the test-only fixture submission path. The server enumerates eligible local IPv4 interfaces for user selection and normalizes a bounded on-link CIDR/method/port plan. The shared JobManager maintains one global active slot, also reserved during optional Glances resolution and reads.
 
 The discovery-scope module validates current interface/scope and budgets. discovery-protocols.mjs parses bounded untrusted replies; discovery-network.mjs owns fixed TCP/DNS/UDP calls; discovery-worker.mjs runs them inside the killable worker. discovery-runner.ts validates messages and constructs job-scoped address-candidate observations with explicit real/synthetic provenance. No adapter credentials or hosted transport are introduced.
 
@@ -47,7 +49,7 @@ Every newly encountered source + subjectKey gets an opaque internal UUID. IP/MAC
 
 The SQLite observation ID deduplicates repeated delivery. Each record includes source, vantage, observedAt, receivedAt, ttlMs, status, identifiers and service evidence. History is not replaced. Current-health projection returns unknown once evidence is stale, while preserving its original observed status. A stopped result is explicit; missing or stale collection never implies a device is stopped or unhealthy.
 
-Duplicate events are skipped by ID. The only producers are trusted fixtures. The Proxmox worker boundary validates bounded resource batches and constructs provenance in the parent. Before accepting external observations, add secure transport/issuer binding, duplicate-ID payload conflict handling and persistent identity-conflict records.
+Duplicate events are skipped by ID. The production discovery parent validates bounded worker results and assigns provenance. The simulated Proxmox worker lives in test support only. Before accepting externally submitted observations, add secure transport/issuer binding, duplicate-ID payload conflict handling and persistent identity-conflict records.
 
 The NFS example reports only a synthetic NFS failure, ping success and SMB success. There is no asserted root cause or downstream dependency impact. Dependency graph, findings grouping and recommendation persistence are deferred.
 
@@ -55,17 +57,20 @@ The NFS example reports only a synthetic NFS failure, ping success and SMB succe
 
 All routes are under /api/v1:
 
-- GET /health: process health and fixture-plus-opt-in-discovery designation
-- GET /snapshot: synthetic marker, assets, jobs and allowed fixture targets
+- GET /health: process health, current runtime and collection availability
+- GET /snapshot: real-only assets, system projections, stats, active reads and jobs
 - GET /assets: projected inventory
 - GET /assets/:id: asset plus latest 100 evidence records
 - GET /jobs and /jobs/:id: progress and immutable submission settings
-- POST /jobs: submit fixture collection
 - POST /jobs/:id/cancel: request cancellation and worker termination; repeated cancellation is harmless
+- GET /discovery/options: current eligible interfaces and bounded local DNS defaults
+- POST /discovery/preview and /discovery/jobs: validate or explicitly submit a fixed scoped plan
+- POST /assets/:id/glances/preview and /assets/:id/glances/read: review or consent to one fixed stats endpoint
+- POST /stats/:id/cancel: cancel the active manual stats read
 
 Mutation requests require JSON and X-Neo-Client: local-ui. Host must exactly match a supported localhost/127.0.0.1 app port; browser Origin, when present, must match those local origins. Cross-origin requests receive no CORS allowance. Requests are limited to 8 KiB. These are local browser-exposure defenses, not authentication.
 
-Example submission:
+Historical test-only fixture submission (POST /jobs is absent from production):
 
 ```json
 {
@@ -79,23 +84,23 @@ Example submission:
 }
 ```
 
-The fixture submission endpoint accepts no addresses, CIDRs, platform URLs or credentials as targets. The separate discovery endpoint accepts only its explicitly validated local IPv4 plan; see discovery.md. Only seven registered fixture keys are valid, including the opt-in simulated Proxmox installation. Exclusions must belong to scope; at least one target must remain. Request keys and targets are validated strictly. Scope/exclusions are sorted and copied into the job.
+The test-only fixture submission endpoint accepts no addresses, CIDRs, platform URLs or credentials as targets. It is installed only by the explicit test-support app. The production discovery endpoint accepts only its validated local IPv4 plan; see discovery.md. Fixture keys, scope/exclusions and cycle behavior below describe the test scheduler, not a normal runtime feature.
 
 Initial mode requires one cycle. Live allows 1–60 cycles, 1–30 second intervals and a 1–60 second total lifetime; the UI uses a 30-second lifetime and caps its cycle control at 15. Collection ends at the earlier cycle/lifetime bound. The interval is a delay between complete cycles, not a fixed-rate guarantee.
 
 An identical requestId and normalized settings returns the same persisted job (including after completion); different settings for that key return 409. There is one active slot, no unbounded waiting queue. Other concurrent submissions return 409. Each target call has a 750 ms deadline including worker startup, then later targets continue after worker termination. Synchronous CPU loops and unresolved promises inside that worker cannot prevent parent-side cancellation or whole-job timeout. Adapter errors are reduced to a fixed message. Late results are ignored.
 
-Terminal states: completed, cancelled, timed_out, interrupted, failed. A target error makes the terminal job failed with partial results preserved. Shutdown aborts and awaits the active runner before closing SQLite. Storage-write failures are consumed by the background runner, release the active slot, disable new collection, and expose a collectionError in health/snapshot responses. The UI warns that activity may be incomplete; Neo does not claim that an unsaved terminal state was persisted. On restart, queued/running records become interrupted. A new request starts a new job; there is no implicit replay or live-job resumption.
+Terminal states: completed, completed_with_issues, cancelled, timed_out, interrupted, failed. Bounded per-method issues can preserve useful evidence with completed_with_issues; a collector/worker failure remains failed. Shutdown cancels stats and the active job in preClose, while pending HTTP responses can still finish. It awaits collection cleanup, closes remaining browser connections, and closes SQLite in onClose. This follows the [Fastify close lifecycle](https://fastify.dev/docs/latest/Reference/Server/#close) and handles unused preconnections and incomplete requests without waiting for their normal network timeouts. Storage-write failures are consumed by the background runner, release the active slot, disable new collection, and expose a collectionError in health/snapshot responses. The UI warns that activity may be incomplete; Neo does not claim that an unsaved terminal state was persisted. On restart, queued/running records become interrupted. A new request starts a new job; there is no implicit replay or live-job resumption.
 
 Total target attempts, completed attempts, cycles and accepted observation counts are separate. A timeout/cancellation can leave progress below 100%, intentionally.
 
 ## Storage and operating limits
 
-SQLite uses foreign keys, WAL, bound statements, a 1-second busy timeout and atomic observation batches. Internal job JSON is saved after each attempted target and cycle. Schema version 1 is recorded; a newer version is rejected. Run only one application process against a database. There is no multi-process job coordinator.
+SQLite uses foreign keys, WAL, bound statements, a 1-second busy timeout and atomic observation batches. Internal job JSON is saved after each attempted target and cycle. Schema version 2 adds stats snapshots transactionally; versions above 2 are rejected. Run only one application process against a database. There is no multi-process job coordinator.
 
-The scheduler caps retained job count at 200 and ingest caps observations at 10,000. Capacity failures keep existing data, report collection failure, and do not silently remove evidence. Growth is bounded for this fixture implementation; a production system needs a designed retention/export policy and bounded adapter payloads.
+The scheduler caps visible job count at 200, visible observations at 10,000 and stats snapshots at 500. Quarantined synthetic rows do not consume real discovery capacity. Capacity failures keep existing data, report collection failure, and do not silently remove evidence. A long-running installation still needs a designed retention/export policy.
 
-The data directory is created with mode 0700 when newly created on supporting systems. Files inherit process umask; no encryption or secret vault is implemented. Avoid shared hosts and use OS-level disk/access protections before storing any real topology. Browser storage contains only selected fixture keys.
+The data directory is created with mode 0700 when newly created on supporting systems. Files inherit process umask; no encryption or secret vault is implemented. Protect real metadata using the host's disk/access controls. Discovery modal edits persist in component memory while the page stays open; closing it clears consent.
 
 ## Future collectors and optional endpoint agent
 
@@ -115,7 +120,7 @@ The fixed-worker foundation is described in [collector isolation](collector-isol
 
 ## Executive-function support
 
-The current UI keeps a single next step visible, groups the NFS evidence, saves scope selection, makes automatic stop limits clear, and separates setup/maintenance/recovery effort. Planned guidance should persist progress, explain prerequisites and alternatives, avoid a single security/privacy score, and distinguish certainty from inference. Full guided diagnostics and save/resume workflows remain deferred.
+The NOC prioritizes observed systems and capacity, keeps discovery secondary, preserves modal edits, explains blocking fields and makes automatic stop limits clear. Historical stats and ambiguous identities remain visible. Planned guidance should persist progress, explain prerequisites and alternatives, avoid a single security/privacy score, and distinguish certainty from inference. Full dependency analysis, guided diagnostics and save/resume workflows remain deferred.
 
 ## API and dependency references
 

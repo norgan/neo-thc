@@ -1,6 +1,16 @@
-## Real-only browser suite
+# Current browser suite: network-overview-v4
 
-All 16 cases passed at 7002b4a in [run 38344284713](https://github.com/norgan/neo-thc/actions/runs/38344284713); review follow-ups add the System freshness poll assertion. The current suite has eight cases in each of two Chromium viewports (16 total): real-only empty startup; actual-config prefill and manual edits; budget/token correction; preview/consent/repeated-click prevention; real evidence with synthetic-row exclusion; active-job lock/cancel; partial outcomes and API recovery; keyboard/navigation/link-wide consent. Browser API data is intercepted where needed; no live scan occurs. Read current PR checks for the exact corrected head. The following evidence is historical.
+The current suite has 14 cases in each of two Chromium viewports: 1440×1000 desktop and 375×812 mobile emulation. **All 28 passed locally on Windows on 14 October 2026 (1.3 minutes).** The run used the production build, Node 24.19.0, Playwright 1.64.0 and its pinned Chromium 156.0.8078.4. No physical-device or cross-browser claim follows from viewport emulation.
+
+Coverage includes empty NOC startup; local-config prefill; exact TCP budgets and validation; preview/consent/repeated-submit controls; real/synthetic evidence separation; active-job cancellation; per-method outcomes and API recovery; keyboard/navigation; friendly systems; partial/zero Glances metrics; stale-API locking; modal focus, preserved edits and browser history; combined common-port/automatic-Glances consent; and NOC capacity/Network presentation. API interceptions use controlled test data and do not initiate a user-network scan. Each case rejects uncaught browser errors and external app requests.
+
+The isolated production-server harness has a ten-second startup limit and a five-second cleanup limit. POSIX SIGTERM teardown is checked in Linux CI. Windows process.kill terminates the child directly; direct Windows shutdown coverage comes from tests/shutdown.test.ts, not this process-signal harness. See [current PR checks](https://github.com/norgan/neo-thc/pull/1/checks) for the exact published head and [testing](testing.md) for local evidence and limits.
+
+The following records describe historical fixture UI, counts and lockfile provenance, not the current interface.
+
+## Historical real-only browser suite
+
+All 16 cases passed at 7002b4a in [run 38344284713](https://github.com/norgan/neo-thc/actions/runs/38344284713); review follow-ups added the System freshness poll assertion. That suite had eight cases in each of two Chromium viewports (16 total): real-only empty startup; actual-config prefill and manual edits; budget/token correction; preview/consent/repeated-click prevention; real evidence with synthetic-row exclusion; active-job lock/cancel; partial outcomes and API recovery; keyboard/navigation/link-wide consent. Browser API data was intercepted where needed; no live scan occurred.
 
 # Browser verification
 

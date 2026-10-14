@@ -26,13 +26,17 @@ Limits: six requests, two-second absolute request deadlines, twelve-second overa
 
 Valid plugin sections survive another section failing. Missing, failed, empty and genuine zero values remain distinct. Filesystem entries are not summed because bind/overlay mounts can overlap. Glances' reported percentage is preserved; used plus free need not equal size. “Fetched” is Neo's receipt action time, not a guarantee that Glances refreshed its internal cached sample then.
 
-## Endpoint discovery limitation
+## Optional automatic endpoint discovery
 
-This version does not resolve mDNS instances/SRV/TXT/A into a REST endpoint. Glances uses _glances._tcp for both REST and XML-RPC. A future bounded resolver must require protocol=rest, an unambiguous SRV port and a matching A record for the already approved address, then still ask the user before HTTP reads. No advertised URL is followed.
+Discovery offers an initially unchecked **Read existing Glances REST stats automatically** option. Select HTTP or verified HTTPS and approve link-wide transmission, then review and confirm the complete job. This consent includes bounded mDNS endpoint resolution and subsequent fixed-path stats reads; ordinary discovery never adds these reads automatically.
+
+Glances uses _glances._tcp for both REST and XML-RPC. The resolver requires a matching PTR instance, an unambiguous SRV port, exact protocol=rest TXT bytes, and an A record matching the already approved responding address. RPC, unknown protocol, conflicting, withdrawn, expired, mismatched and unresolved advertisements are skipped. Advertised paths and URLs are ignored. DNS label bytes and label boundaries are preserved during matching; TXT keys are ASCII case-insensitive and the first occurrence wins, including missing/empty values.
+
+The resolver sends at most seven fixed multicast questions over an eight-second resolution window. At most two endpoints are read, with six sequential requests each and at most two endpoint tasks. Each HTTP read retains the manual transport's limits. Results remain snapshots, with explicit skipped/partial/failed outcomes in Activity. This work shares the discovery job's cancellation, deadline and collection slot; base discovery evidence survives cancellation or failed enrichment. Source/interface and scope are revalidated before resolution and reads. No installation, credential attempts, recurring polling or scope expansion occurs.
 
 ## Verification and sources
 
-Tests use isolated loopback HTTP fixtures and explicit injected API seams; no private topology, credentials or physical Glances installation is used in CI. The production smoke exercises the actual compiled transport. Browser tests exercise consent, repeated-click prevention, partial values and responsive presentation. Physical Glances/Windows interoperability remains unverified by this development session.
+Tests use isolated loopback HTTP fixtures and explicit injected API/UDP seams; no private topology, credentials or physical Glances installation is used in CI. The production smoke exercises the actual compiled transport. Browser tests exercise manual and combined discovery consent, repeated-click prevention, partial values and responsive presentation. Windows unit verification includes real loopback transports and shutdown preservation; physical Glances interoperability remains unverified.
 
 Official contracts reviewed: [Glances REST API](https://glances.readthedocs.io/en/latest/api/restful.html), [v4.5.8 REST implementation](https://github.com/nicolargo/glances/blob/v4.5.8/glances/outputs/glances_restful_api.py), [system plugin](https://github.com/nicolargo/glances/blob/v4.5.8/glances/plugins/system/__init__.py), [filesystem plugin](https://github.com/nicolargo/glances/blob/v4.5.8/glances/plugins/fs/__init__.py), [dynamic advertisement](https://github.com/nicolargo/glances/blob/v4.5.8/glances/servers_list_dynamic.py).
 
@@ -63,6 +67,6 @@ Write-Host "Verified stopped-database backup: $backup"
 
 The default path is data\neo.sqlite relative to Neo's launch directory. NEO_DB_PATH overrides it; a relative override is also resolved from that directory. Clean shutdown normally checkpoints/removes sidecars. The script copies any remaining -wal/-shm together with the main file into a new unique directory and verifies bytes; never overwrite or omit a remaining WAL.
 
-Then update using git pull --ff-only origin feat/initial-foundation, npm.cmd ci, npm.cmd run build and npm.cmd start. Check the visible semantic-inventory-v3 marker.
+Then update using git pull --ff-only origin feat/initial-foundation, npm.cmd ci, npm.cmd run build and npm.cmd start. Check the visible network-overview-v4 marker.
 
 For rollback, stop Neo again. Preserve the upgraded database separately. Use the saved source commit in a separate checkout and a fresh copy of the entire backup file set in a new directory; set NEO_DB_PATH to that restored main file before starting the old build. Do not overwrite the only backup, combine old/new sidecars, or point the old binary at the upgraded database. The backup restores only the information present at backup time; subsequent scans/snapshots remain in the preserved upgraded copy.

@@ -25,7 +25,8 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   let statsActive: {requestId:string;controller:AbortController;done:Promise<unknown>}|null=null;
   let statsProblem:string|null=null;
   const collectionProblem=()=>jobs.problem??statsProblem;
-  const app = Fastify({ logger: false, bodyLimit: 8_192, requestTimeout: 10_000, trustProxy: false });
+  // Unused browser preconnections and incomplete requests must not hold shutdown open.
+  const app = Fastify({ logger: false, bodyLimit: 8_192, requestTimeout: 10_000, trustProxy: false, forceCloseConnections: true });
 
   app.addHook('onRequest', async (request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
@@ -137,6 +138,12 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
       return reply.type(file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8').send(content);
     });
   }
-  app.addHook('onClose', async () => { statsActive?.controller.abort();await statsActive?.done;await jobs.shutdown(); store.close(); });
+  app.addHook('preClose', async () => {
+    // onClose runs after HTTP requests drain, so cancel work here while its response is still pending.
+    const stats = statsActive;
+    stats?.controller.abort();
+    await Promise.all([stats?.done, jobs.shutdown()]);
+  });
+  app.addHook('onClose', async () => { store.close(); });
   return { app, store, jobs };
 }

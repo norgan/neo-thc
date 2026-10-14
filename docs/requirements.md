@@ -35,7 +35,7 @@ Non-goals: automatic remediation, unapproved network reconfiguration, scanning o
 
 ## Proposed architecture
 
-The local synthetic foundation uses TypeScript, React, Fastify, SQLite and isolated collector workers. Real collection, endpoint agents and split deployment remain planned.
+The implemented local foundation uses TypeScript, React, Fastify, SQLite and isolated discovery workers. It supports explicit-scope real IPv4 discovery and optional read-only Glances snapshots, including consented bounded endpoint resolution. Synthetic collectors are confined to test support. Credentialed platform adapters, endpoint agents and split deployment remain planned.
 
 Workers emit normalized observations. Reconciliation maintains identity and dependencies without discarding conflicts. Findings reference evidence. Cancellation and job limits must remain enforceable independently of individual probes. Core functionality needs no cloud service.
 

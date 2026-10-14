@@ -1,4 +1,21 @@
-## Real-only correction under test
+# Current verification: network-overview-v4
+
+Continuation on 14 October 2026, starting from PR #1 head ecb6f17. That head's [run 38350707373](https://github.com/norgan/neo-thc/actions/runs/38350707373) passed typechecks, 72 unit tests, build and compiled loopback smoke, but failed two desktop browser teardowns because the server required SIGKILL. Its PR description still cited an older passing head.
+
+The continuation cancels collection in preClose, before pending HTTP responses drain, and closes unused/incomplete browser connections during shutdown. New regressions failed on the original code and cover unused connections, partial request headers/bodies, and an active HTTP stats read that must retain completed metrics before SQLite closes. The regressions preserve the existing 2.5-second shutdown bound rather than weakening the browser harness's five-second check.
+
+Local Windows verification used Node 24.19.0 and npm 11.6.2:
+
+- Locked dependency install: passed; npm reported zero vulnerabilities.
+- Unit suite: **74 passed, zero failed/skipped**, including isolated real TCP, DNS, HTTP and untrusted TLS fixtures.
+- Server, web and browser-test typechecks: passed.
+- Production build: passed.
+- Chromium desktop/mobile UI: **28 passed** in 1.3 minutes, using controlled local data. Windows process.kill does not exercise the POSIX graceful-signal path; the new app.close regression tests exercise shutdown directly.
+- The Linux-only process-group smoke and graceful SIGTERM browser teardown are verified by [current PR checks](https://github.com/norgan/neo-thc/pull/1/checks), not inferred from the Windows run.
+
+No LAN discovery, multicast/broadcast transmission, physical Glances connection, credentials, merge or deployment was performed. Physical-network interoperability, Safari/Firefox and full accessibility remain unverified. The following records preserve earlier milestones; their fixture UI descriptions and counts are historical.
+
+## Historical real-only correction
 
 The real-discovery-v2 correction at 7002b4a passed 50 unit tests, 16 Chromium cases, typechecks, build and the actual compiled-worker loopback smoke in [run 38344284713](https://github.com/norgan/neo-thc/actions/runs/38344284713). Review follow-ups add a System freshness poll regression and direct diagnostic transport tests (51 unit tests); current PR checks apply to the final head. Tests now cover preserved real records with non-destructively hidden legacy samples, real-only capacity/collision handling, system CIDR/DNS prefill, exact port budgets, visible form locks and structured partial outcomes. Browser cases were rewritten for the normal real-only UI. Production smoke executes the actual compiled discovery TCP worker against a loopback listener and confirms fixture POST routes are absent. No LAN scan is executed in CI. Historical verification below describes earlier code, not the current UI.
 

@@ -11,16 +11,18 @@ Implemented methods:
 - **SSDP multicast:** one fixed root-device M-SEARCH to 239.255.255.250:1900, MX 1 and multicast TTL 1. Retain a bounded USN claim only. LOCATION and other headers are discarded; no URLs, descriptions or UPnP control requests are fetched.
 - **Literal IPv4 broadcast:** one NetBIOS NB Name Query for the special browse-master name, UDP 137, local-subnet broadcast address derived from the current interface, TTL 1. This is limited legacy browse-master coverage; many modern devices will never answer. No NBSTAT follow-up, registration, release or control traffic is sent.
 
-IPv6, ping, ARP, UDP port scanning, full mDNS instance resolution, banners, fingerprints and real platform API adapters are not implemented. No privilege escalation or firewall/network-setting change is attempted.
+An optional, separately disclosed Glances enrichment phase resolves only _glances._tcp REST advertisements and reads fixed stats paths after discovery. It has its own seven-query/two-endpoint limit inside the approved full-link scope; see [Glances](glances.md#optional-automatic-endpoint-discovery). General mDNS instance discovery, IPv6, ping, ARP, UDP port scanning, banners, fingerprints and real platform API adapters are not implemented. No privilege escalation or firewall/network-setting change is attempted.
 
 ## Scope and budget
 
 - At most 256 addresses in one explicit CIDR contained in the selected interface subnet
 - The actual link's network/broadcast addresses and the collector's source address are excluded from TCP/PTR targets
-- Up to eight chosen TCP ports and at most 1,024 address/port attempts; concurrency 16, 400 ms connect deadline, sockets destroyed on completion
+- Up to 64 chosen TCP ports and at most 16,384 address/port attempts; the common homelab profile contains 48 visible ports
+- Explicit TCP attempt budgets of 1,024, 4,096, 8,192 or 16,384 and concurrency of 8, 16 or 32; 400 ms connect deadlines, sockets destroyed on completion, starts paced to at most 100 per second
 - At most 256 PTR queries; concurrency eight, resolver timeout/tries bounds, cancellation and an independent worker/job deadline
 - One datagram per selected link-wide method; two-second receive windows, at most 256 received packets per method (including invalid/out-of-scope packets), 8 KiB per accepted datagram and one accepted result per sender
-- One initial pass, a 60-second whole-job deadline, no retries, periodic scheduling or automatic scope restoration/start
+- One initial pass with a selected 60/120/240/480-second whole-job deadline (default 240 seconds); conservative estimates reject a plan that cannot fit the chosen bounds
+- No retries, periodic scheduling or automatic scope restoration/start; discovery options never silently shrink the CIDR or port list to fit a budget
 
 TCP/DNS limits count attempts, not exact wire packets; operating-system TCP behavior and DNS TCP fallback may send extra packets. The UI previews this distinction.
 
@@ -40,7 +42,7 @@ Normal network attempt evidence uses a 60-second freshness policy; mDNS/SSDP adv
 
 ## Local use and privacy
 
-Start the loopback application normally, then use Discovery. Methods and scope start unselected. Preview does not send packets. Confirm only networks you are authorized to test. To stop, cancel in Activity or stop Neo.
+Start the loopback application normally, then choose **Add or rescan systems** from the overview. Methods and scope start unselected; TCP offers the visible common profile when enabled. Preview does not send packets. Confirm only networks you are authorized to test. Closing the modal preserves edits and clears consent. To stop, cancel in Activity or stop Neo.
 
 The local database may contain private IP addresses, PTR names, interface details and advertisement claims. Nothing is uploaded by Neo; protect the database/backups and do not publish them. No account credentials are needed by these discovery methods. Do not expose the current unauthenticated API to a LAN, proxy or public tunnel.
 
@@ -50,7 +52,7 @@ A physical-network validation still requires the owner's chosen interface, autho
 
 CI uses synthetic interface descriptions, injected multicast/broadcast send seams and isolated loopback TCP/DNS fixtures. It never sends multicast or broadcast onto the GitHub runner's LAN. Unit lifecycle tests inject a separate test-support worker, inaccessible to API/environment settings. The production worker has no mock branch. Production smoke executes its actual TCP transport against an isolated loopback listener; the public scope validator still rejects loopback. Browser cases check preview/confirmation/reset behavior using intercepted discovery endpoints; they do not establish physical discovery interoperability.
 
-Read current PR checks for execution status. Windows and physical network behavior, firewall effects, multihomed routing and actual responder coverage remain unverified. Real Proxmox transport is deferred.
+Read current PR checks for execution status. The continuation verified unit behavior on Windows with isolated loopback TCP/DNS/HTTP fixtures, including shutdown and preservation of partial stats. Physical network behavior, firewall effects, multihomed routing and actual responder coverage remain unverified. Real Proxmox transport is deferred.
 
 ## Protocol references
 

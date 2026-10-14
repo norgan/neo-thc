@@ -3,7 +3,7 @@
 **Neo — Network Environment Overview**  
 **THC — The Homelab Companion**
 
-A local-first, agentless network discovery app. The normal runtime contains no demo controls, sample devices or simulated platform integration. The opening screen is Discovery for an empty database and Systems when observed responders are already saved.
+A local-first, agentless network discovery app. The network operations centre (NOC) opens with saved systems, service evidence and reported capacity. Use **Add or rescan systems** to open discovery without leaving the overview. The normal runtime contains no demo controls, sample devices or simulated platform integration.
 
 ## Start or update locally
 
@@ -16,23 +16,24 @@ npm.cmd run build
 npm.cmd start
 ```
 
-Open **http://127.0.0.1:4318**. The header should show **semantic-inventory-v3**. If you see an older demo interface, stop the old server, rebuild, restart and reload. A new frontend detects an older API and explains the mismatch.
+Open **http://127.0.0.1:4318**. The header should show **network-overview-v4**. If you see an older interface, stop the old server, rebuild, restart and reload. A new frontend detects an older API and explains the mismatch.
 
-On macOS/Linux, use npm instead of npm.cmd. Build/start commands are portable by source inspection; Windows itself has not been executed in CI. The standalone smoke/browser process harnesses target Linux.
+On macOS/Linux, use npm instead of npm.cmd. Node 24 unit tests, typechecks and build are also checked locally on Windows during this continuation. The standalone process-group smoke harness targets Linux; physical network and Glances compatibility require separate verification.
 
 Build cleans only generated dist/server files; it never touches data. SQLite upgrades transactionally to schema v2. **Stop Neo and back up your database before updating:** real discovery results are preserved; see [Windows backup and rollback](docs/glances.md#windows-update-and-database-backup). Legacy synthetic rows remain stored but are excluded from normal inventory, evidence, activity, ambiguity warnings and collection capacity. There is no public fixture submission endpoint.
 
 ## Real discovery
 
-1. Choose the source interface. Its actual CIDR is prefilled and editable.
-2. Select methods. TCP ports are fully visible in a multiline field; target × unique-port counts show the exact attempt budget.
+1. Open **Add or rescan systems** and choose the source interface. Its actual CIDR is prefilled and editable. Closing discovery preserves edits and clears consent.
+2. Select methods. TCP offers a visible 48-port common homelab profile and an editable custom list. Target × unique-port counts, concurrency and the selected deadline show the exact attempt budget; scope is never silently reduced to fit.
 3. For PTR DNS, Neo reads local system configuration without sending a query. On Windows it uses a fixed, read-only Get-DnsClientServerAddress command to find interface-specific IPv4 resolvers. Other systems, or an unavailable Windows read, use a clearly labelled system-wide configuration list. Only an on-link supported resolver is prefilled; no gateway or public DNS address is guessed. You can edit the choice.
-4. Preview the scope, review the budget, confirm, then Start. Prefill and preview do not scan.
-5. Activity shows progress, cancellation and per-method outcomes. Systems prioritizes names, services and useful responses. All address attempts and raw evidence remain available; address views are not permanent verified-device identities.
+4. Optionally enable **Read existing Glances REST stats automatically**, choose HTTP or verified HTTPS, and approve link-wide discovery. This resolves at most two advertised REST endpoints inside the approved scope and reads their fixed stats paths after discovery. It does not install Glances or request credentials.
+5. Preview the scope, review all network operations and budgets, confirm, then Start. Prefill and preview do not scan.
+6. Activity shows progress, cancellation and per-method outcomes, including optional Glances enrichment. Systems prioritizes names, services and useful responses. All address attempts and raw evidence remain available; address views are not permanent verified-device identities.
 
 Methods: numeric IPv4 TCP connect probes; reverse DNS/PTR; mDNS service-type multicast; SSDP root-device multicast; limited legacy NetBIOS browse-master broadcast. No ping/ARP, IPv6, UDP port sweep, banner capture, URL fetching, credential attempt or automatic scheduled scan.
 
-At most 256 IPv4 addresses, eight selected ports and 1,024 total TCP attempts; one pass with a 60-second bound. Multicast/broadcast require separate full-subnet approval on an unambiguous /24–/30 interface. The whole link receives those queries. See [exact protocol scope and limits](docs/discovery.md).
+At most 256 IPv4 addresses, 64 selected ports and 16,384 TCP attempts. Reviewable concurrency choices are 8, 16 or 32; whole-job deadlines are 1, 2, 4 or 8 minutes, with four minutes selected initially. TCP starts are paced to at most 100 per second. Multicast/broadcast and automatic Glances resolution require separate full-subnet approval on an unambiguous /24–/30 interface. The whole link receives those queries. See [exact protocol scope and limits](docs/discovery.md).
 
 A run may finish **completed with issues** when individual methods encounter a denied socket, unavailable source, DNS timeout/refusal or receive cap. Saved evidence remains available. Expected TCP refusal/timeout, DNS no-data and silent advertisements are inconclusive outcomes, not proof of failure or absence. Older jobs retain their existing generic errors because discarded method diagnostics cannot be reconstructed.
 
@@ -56,7 +57,7 @@ Use npm run dev:api and npm run dev:web in separate terminals for development (V
 
 Fixtures exist only in tests/support and are excluded from the production build. They are injected explicitly by tests, never selected by an environment variable or production HTTP request. The production worker contains only real network operations.
 
-The real-only correction at 7002b4a passed 50 unit tests, 16 desktop/mobile Chromium cases, typechecks, build and actual compiled-worker loopback smoke ([run](https://github.com/norgan/neo-thc/actions/runs/38344284713)). Review follow-ups add live System freshness and direct socket/resolver diagnostic regressions (51 unit tests in source); **current PR checks are the source of truth for the final head**. Source is authored through chat/GitHub and executed by authorized GitHub Actions, without local repository execution. Physical network interoperability, Windows execution, Safari/Firefox and full accessibility remain unverified. A user-reported local Windows scan saved candidate evidence but reported a generic method issue on the prior build; that is not a claim that all protocols succeeded.
+The 14 October continuation adds shutdown regressions for unused browser connections, incomplete HTTP requests and an active stats read. The server cancels collection before HTTP draining, preserves completed stats sections, then closes remaining local connections before SQLite. All 74 unit tests passed locally on Windows with Node 24.19.0, including real isolated loopback transports and TLS rejection. **Current [PR checks](https://github.com/norgan/neo-thc/pull/1/checks) are the source of truth for the published head**, including Linux process shutdown and desktop/mobile browser cases. See [verification](docs/testing.md). Physical network interoperability, Safari/Firefox and full accessibility remain unverified.
 
 ## Product direction
 
@@ -65,9 +66,9 @@ Agentless first. An optional endpoint agent is only for capabilities unavailable
 Real Proxmox and other credentialed platform adapters, dependency graphs, advanced DNS diagnostics, recommendations and remote deployment remain planned. No merge or deployment is implied.
 
 
-## Systems and real stats (semantic-inventory-v3)
+## Systems and real stats (network-overview-v4)
 
-Systems opens automatically when saved responders exist. Friendly PTR names, advertised services and evidence-supported role suggestions lead the view. Search names/services/roles; enable “Show all address attempts” for silent or DNS-only candidates. Address/interface grouping is presentation only: original job-scoped identities, observations and past names stay separate. Only the newest address observation supplies current name and service suggestions.
+The NOC and Systems views show friendly PTR names, advertised services and evidence-supported role suggestions. Search names/services/roles; enable “Show all address attempts” for silent or DNS-only candidates. The Network view separates scanned scopes, unclassified infrastructure candidates and delivered-service evidence. Address/interface grouping is presentation only: original job-scoped identities, observations and past names stay separate. Only the newest address observation supplies current name and service suggestions.
 
 Choose **Inspect system → Connect system stats** for a real, one-shot Glances REST API v4 read. Review the exact IP, scheme, port and six fixed GET paths, then approve it. CPU, memory, uptime and per-mount filesystem capacity are reported values with timestamps and partial errors. The default port 61208 is a suggestion, not a discovered port. Authentication-required endpoints stop without credential attempts. No integration installation, recurring polling or credential setup is performed. See [Glances scope and setup](docs/glances.md).
 
