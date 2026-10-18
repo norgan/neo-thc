@@ -80,7 +80,12 @@ if(!app.requestSingleInstanceLock())app.quit();else{
       lockWindow(mainWindow,url=>{try{return new URL(url).origin==='http://127.0.0.1:4318';}catch{return false;}});
       Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'NEO THC',submenu:[{label:'Desktop connection…',click:openSetup},{label:'Browser companion folder',click:()=>void shell.openPath(path.join(root,'browser-companion'))},{type:'separator'},{role:'quit'}]},{label:'View',submenu:[{role:'reload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]}]));
       await startBackend(current);await mainWindow.loadURL('http://127.0.0.1:4318/');
-      if(smokeFile){await fs.writeFile(smokeFile,JSON.stringify({started:true,electron:process.versions.electron,node:process.versions.node,mode:current.mode,url:mainWindow.webContents.getURL(),database:database()}));await fs.writeFile(smokeFile+'.png',(await mainWindow.webContents.capturePage()).toPNG());app.quit();}
+      if(smokeFile){
+        let rendered=false;for(let attempt=0;attempt<20&&!rendered;attempt++){rendered=await mainWindow.webContents.executeJavaScript('!!document.querySelector("h1") && document.body.textContent.includes("playback-desktop-v7")');if(!rendered)await new Promise(resolve=>setTimeout(resolve,100));}
+        if(!rendered)throw new Error('Packaged interface did not render before its deadline');
+        let screenshot='unavailable';try{await fs.writeFile(smokeFile+'.png',(await mainWindow.webContents.capturePage()).toPNG());screenshot='saved';}catch{}
+        await fs.writeFile(smokeFile,JSON.stringify({started:true,rendered,screenshot,electron:process.versions.electron,node:process.versions.node,mode:current.mode,url:mainWindow.webContents.getURL(),database:database()}));app.quit();
+      }
     }catch(error){if(smokeFile)await fs.writeFile(smokeFile,JSON.stringify({started:false,error:error.message,backend:smokeFailure}));else if(automated)console.error('Desktop automation startup failed:',String(error.message).slice(0,1000));else dialog.showErrorBox('NEO could not start','Close any existing NEO server on port 4318 and launch again. If a saved server is unavailable, remove connection.json from the NEO user-data folder to return to standalone mode.');app.quit();}
   });
   app.on('window-all-closed',()=>app.quit());

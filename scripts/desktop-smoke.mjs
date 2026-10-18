@@ -15,9 +15,9 @@ try{
   let exited=false,code=null;child.once('exit',value=>{exited=true;code=value;});child.once('error',()=>{exited=true;code=1;});
   const deadline=Date.now()+(process.argv.includes('--portable')?180000:60000);while(!exited&&Date.now()<deadline)await delay(200);
   assert.ok(exited,'Packaged desktop did not finish its bounded smoke test');assert.equal(code,0);
-  const data=JSON.parse(await readFile(proof,'utf8'));if(!data.started)console.error(JSON.stringify(data));assert.equal(data.started,true);assert.equal(data.mode,'local');assert.ok(data.node.startsWith('24.'));assert.equal(data.url,'http://127.0.0.1:4318/');
+  const data=JSON.parse(await readFile(proof,'utf8'));if(!data.started)console.error(JSON.stringify(data));assert.equal(data.started,true);assert.equal(data.rendered,true);assert.equal(data.mode,'local');assert.ok(data.node.startsWith('24.'));assert.equal(data.url,'http://127.0.0.1:4318/');
   const db=new DatabaseSync(data.database,{readOnly:true});assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');assert.equal(db.prepare('PRAGMA user_version').get().user_version,3);db.close();
   assert.equal(await fetch('http://127.0.0.1:4318/api/v1/health',{signal:AbortSignal.timeout(500)}).then(()=>true,()=>false),false,'Desktop must close its owned listener');
-  if(output){await (await import('node:fs/promises')).mkdir(output,{recursive:true});await writeFile(join(output,'desktop-smoke.json'),JSON.stringify({...data,database:'isolated temporary profile; removed after verification'},null,2));await writeFile(join(output,'desktop-smoke.png'),await readFile(proof+'.png'));}
+  if(output){await (await import('node:fs/promises')).mkdir(output,{recursive:true});await writeFile(join(output,'desktop-smoke.json'),JSON.stringify({...data,database:'isolated temporary profile; removed after verification'},null,2));if(data.screenshot==='saved')await writeFile(join(output,'desktop-smoke.png'),await readFile(proof+'.png'));}
   console.log('PASS: actual packaged desktop starts its own collector, renders packaged UI, creates schema 3, exits and closes its listener. No external Node installation is used by the app.');
 }finally{if(child?.exitCode===null)child.kill();assert.ok(resolve(dir).startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(dir,{recursive:true,force:true});}
