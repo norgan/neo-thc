@@ -18,7 +18,7 @@ No real deployment, firewall rule, account creation or certificate enrollment is
 
 `deploy/neo-thc.service` is a systemd template for `/opt/neo-thc`, `/etc/neo-thc` and `/var/lib/neo-thc`, using a pre-created `neo-thc` account. Review paths, ownership and Node location before installing it. CAP_NET_RAW permits ping; it does not grant arbitrary shell operations through NEO. Linux Wi-Fi telemetry is currently unavailable; the desktop playback computer's Windows telemetry remains available.
 
-`docker build -f deploy/Dockerfile -t neo-thc:0.2.0 .` creates the Linux service image from this compiled bundle. Mount configuration read-only and data writable for the `node` user. Linux host networking is needed for host LAN interfaces and link-local discovery; a bridge sees the container network instead. Host networking also makes the explicitly configured listener reachable on the host. Review that placement and access before starting it. No ports are published by default. Systemd and Docker templates are provided; a real second host and container deployment still need acceptance in your environment.
+`docker build -f deploy/Dockerfile -t neo-thc:0.2.1 .` creates the Linux service image from this compiled bundle. Mount configuration read-only and data writable for the `node` user. Linux host networking is needed for host LAN interfaces and link-local discovery; a bridge sees the container network instead. Host networking also makes the explicitly configured listener reachable on the host. Review that placement and access before starting it. No ports are published by default. Systemd and Docker templates are provided; a real second host and container deployment still need acceptance in your environment.
 
 ## Placement and failure behavior
 

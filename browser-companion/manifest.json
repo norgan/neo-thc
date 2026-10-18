@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NEO THC Playback Companion",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "User-started YouTube and Netflix playback measurements. No account, video URL or title collection.",
   "permissions": ["activeTab", "scripting", "storage"],
   "action": {"default_popup": "popup.html", "default_title": "Diagnose this playback with NEO"},
