@@ -15,11 +15,15 @@ import {DiagnosticRunner,parseDiagnostic,type createDiagnosticWorker} from './di
 import {diagnosticOptions} from './diagnostic-options.js';
 import {InternetRunner,type InternetProbes} from './internet-runner.js';
 import {internetOperations,INTERNET_DURATION_MS} from '../shared/internet.js';
+import {accessProblem,type AccessPolicy} from './access.js';
+import {parsePlayback} from '../shared/playback.js';
+import {deviceEvidence} from './device.js';
 
 const allowedHosts = new Set(['127.0.0.1:4318', 'localhost:4318', '127.0.0.1:5173', 'localhost:5173']);
 const allowedOrigins = new Set([...allowedHosts].map((host) => 'http://' + host));
 
-export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker; diagnosticWorkerFactory?:typeof createDiagnosticWorker; internetProbes?:InternetProbes; readDiagnosticOptions?:typeof diagnosticOptions } = {}) {
+export function createApp(options: { dbPath?: string; webRoot?: string; access?:AccessPolicy; tls?:{key:Buffer;cert:Buffer}; deviceVantage?:'this-computer'|'collector'; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker; diagnosticWorkerFactory?:typeof createDiagnosticWorker; internetProbes?:InternetProbes; readDiagnosticOptions?:typeof diagnosticOptions } = {}) {
+  if(options.access?.mode==='service'&&!options.tls)throw new Error('Service mode requires TLS');
   const store = new Store(options.dbPath, options.testSupport !== true);
   const discovery = options.discoveryAdapter ?? new DiscoveryCollector();
   const adapter = options.testSupport ? options.adapter ?? discovery : discovery;
@@ -31,16 +35,16 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   const configReads=new Set<{controller:AbortController;done:Promise<unknown>}>();
   const collectionProblem=()=>jobs.problem??statsProblem;
   // Unused browser preconnections and incomplete requests must not hold shutdown open.
-  const app = Fastify({ logger: false, bodyLimit: 8_192, requestTimeout: 10_000, trustProxy: false, forceCloseConnections: true });
+  const app = Fastify({ ...(options.tls?{https:options.tls}:{}), logger: false, bodyLimit: 8_192, requestTimeout: 10_000, trustProxy: false, forceCloseConnections: true });
 
   app.addHook('onRequest', async (request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'no-referrer');
     reply.header('Cache-Control', 'no-store');
     reply.header('Content-Security-Policy', "default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-    if (!allowedHosts.has(request.headers.host ?? '')) throw new RequestError(403, 'Unrecognized local host');
+    const accessError=accessProblem(options.access??{mode:'local'},request.headers.host,request.headers.origin,request.headers.authorization);
+    if(accessError)throw new RequestError(accessError==='Authentication required'?401:403,accessError);
     const origin = request.headers.origin;
-    if (origin && !allowedOrigins.has(origin)) throw new RequestError(403, 'Cross-origin access is unavailable');
     if (!['GET', 'HEAD'].includes(request.method) && request.headers['x-neo-client'] !== 'local-ui') {
       throw new RequestError(403, 'A local client header is required');
     }
@@ -57,9 +61,21 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'Not found' }));
 
   const isSynthetic = () => !store.jobs().some((job) => !!job.spec.discovery) && store.assets().every((asset) => asset.latest?.synthetic !== false);
-  app.get('/api/v1/health', async () => ({ status: collectionProblem() ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'home-support-v6', collector: 'explicit-scope-discovery', collectionError: collectionProblem() }));
+  app.get('/api/v1/health', async () => ({ status: collectionProblem() ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'playback-desktop-v7', collector: 'explicit-scope-discovery', collectionError: collectionProblem() }));
+  app.get('/api/v1/placement',async()=>({mode:options.access?.mode==='service'?'service':'local',collector:'This collector computer',deviceChecks:options.deviceVantage??'collector'}));
+  app.get('/api/v1/playback',async()=>({reports:store.playback()}));
+  app.post('/api/v1/playback',{bodyLimit:65536},async(request,reply)=>{
+    let capture;try{capture=parsePlayback(request.body);}catch(error){throw new RequestError(400,error instanceof Error?error.message:'Invalid playback report');}
+    if(store.playback().length>=200)throw new RequestError(409,'Playback history is full. Existing reports are retained.');
+    return reply.code(201).send({report:store.savePlayback(capture)});
+  });
+  app.post('/api/v1/local-device',async()=>{
+    if(configReads.size>=4)throw new RequestError(409,'A local configuration read is already active.');
+    const controller=new AbortController();const read={controller,done:deviceEvidence(controller.signal,options.deviceVantage??'collector')};configReads.add(read);
+    try{return await read.done;}finally{configReads.delete(read);}
+  });
   app.get('/api/v1/snapshot', async () => ({
-    runtime: 'home-support-v6', synthetic: options.testSupport ? isSynthetic() : false,
+    runtime: 'playback-desktop-v7', synthetic: options.testSupport ? isSynthetic() : false,
     collectionError: collectionProblem(), assets: store.assets(), systems:systemViews(store.assets()), stats:store.stats(), statsActive:statsActive?.requestId??null, jobs: store.jobs(), targets: options.testSupport ? adapter.targets : [],
   }));
   app.get('/api/v1/assets', async () => ({ synthetic: options.testSupport ? isSynthetic() : false, assets: store.assets() }));
@@ -149,6 +165,8 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
 
   if (options.webRoot) {
     const root = options.webRoot;
+    app.get('/companion.zip',async(_request,reply)=>reply.type('application/zip').header('Content-Disposition','attachment; filename="neo-playback-companion.zip"').send(await readFile(join(root,'companion.zip'))));
+    app.get('/playback-guide',async(_request,reply)=>reply.type('text/html; charset=utf-8').send(await readFile(join(root,'playback-guide.html'))));
     app.get('/', async (_request, reply) => reply.type('text/html; charset=utf-8').send(await readFile(join(root, 'index.html'))));
     app.get<{ Params: { file: string } }>('/assets/:file', async (request, reply) => {
       const file = request.params.file;

@@ -1,3 +1,13 @@
+## Current playback and desktop verification (18 October 2026)
+
+Candidate version **0.2.0**, runtime **playback-desktop-v7**. Windows source checks passed **110 unit tests**, zero failures/skips, server/web/browser typechecks and production build. The final desktop/mobile Chromium run passed **48 cases**, including real HTMLVideoElement dimensions/frame counters from an isolated canvas stream, report privacy validation, preview/save/reload and mobile reflow. Fixtures are not real Netflix or YouTube service acceptance.
+
+The actual packaged Windows app payload starts its owned utility-process collector, renders packaged assets, creates a valid schema-3 database and exits with its listener closed. A separate Electron UI integration test loads the exact packaged application files with the same pinned runtime and exercises Settings IPC: standalone → authenticated private-CA TLS service → standalone, no credential API in the main renderer, session-only token absent from disk, and clean shutdown. The native file chooser is stubbed only in that isolated test. Playwright must own its app-ready loader for this test; packaged-EXE startup is checked separately.
+
+`node scripts/desktop-smoke.mjs` and `node scripts/desktop-integration.mjs` use temporary profiles and loopback fixtures. The optional portable-launcher test allows a bounded 180 seconds for extraction/first launch; normal installed-payload smoke is bounded to 60 seconds. Linux CI checks compiled transports and process-group shutdown separately; current exact-head evidence belongs in the PR/CI results.
+
+The Windows desktop includes Electron 44.9.0 / Node 24.22.0; source and server tooling require Node 24. The checked dependency audit reported zero vulnerabilities. Windows x64 portable and per-user installer outputs plus a separate Node 24 server bundle are generated under release. Packages are currently unsigned. Real second-host deployment, protected Netflix sessions, browser-store publication, physical TV/phone playback, Linux Wi-Fi and other desktop OS packages remain unverified or outside this release.
+
 # Home support diagnostic extension — 18 October 2026
 
 The home-support-v6 extension adds [home Internet and streaming diagnosis](diagnostics.md): YouTube/Netflix DNS, gateway/Internet ICMP samples, IPv4 path MTU, local interface settings and an optional bounded Cloudflare transfer. Targeted DNS supports custom ports and distinguishes NODATA from NXDOMAIN; separately approved IPv4/IPv6 TCP/TLS remains available. It reuses schema-v2 job storage. Personal live results remain outside the repository.

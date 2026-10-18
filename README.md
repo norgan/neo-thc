@@ -5,7 +5,17 @@
 
 A local-first home tech support platform: understand the home network, investigate slow Internet and streaming, collect evidence, and get a practical next step. Discovery supplies part of that evidence. The network operations centre (NOC) opens with saved systems, service evidence and reported capacity; **Diagnostics** offers guided Internet/streaming and targeted DNS/IPv4/IPv6/TLS checks. Use **Add or rescan systems** for inventory. The normal runtime contains no demo controls, sample devices or simulated platform integration.
 
-## Start or update locally
+## Desktop app and a collector on another computer
+
+Version **0.2.0**, runtime **playback-desktop-v7**, adds actual browser playback reports and a self-contained Windows desktop app. Run the portable executable, or use the per-user installer; no separate Node installation is needed for the desktop. Standalone starts its own loopback API, collector and SQLite database in the OS application-data folder. Closing it stops its local collector.
+
+In **Settings → Desktop connection**, choose standalone or an authenticated HTTPS collector service. Remote mode keeps packaged UI assets and CPU/memory/Wi-Fi reads on the desktop, while discovery, Internet diagnostics and report storage run on the selected server. Its token stays outside the web renderer; optional remembered tokens require protected OS storage. Connection changes never start discovery. [Server deployment instructions](deploy/README.md) and [placement/trust boundaries](docs/deployment-modes.md).
+
+**Playback** imports measurements from the included user-activated Edge/Chrome companion: decoded resolution and changes, buffer ahead, rebuffer waiting time, stalled events, dropped-frame deltas and page long tasks. It uses the existing playing browser and does not collect account data, cookies, titles, media URLs or video. Review before saving to the selected collector. [One-time companion setup](docs/playback-setup.html) · [Measurement interpretation](docs/playback.md). The companion is supplied as unpacked source, not a store-published extension. Installation is an explicit browser-owner step.
+
+From source, use `npm run build`, `npm run desktop`, `npm run package:desktop` and `npm run package:service`. Release files are generated under `release/`; they are not source-controlled. Desktop Windows x64 is the packaged target; other desktop platforms require their own build and acceptance. Desktop packages are currently unsigned.
+
+## Start or update the local browser version
 
 Requires **Node.js 24.x**. From a clean checkout on feat/initial-foundation, stop the old process with Ctrl+C before updating:
 
@@ -16,11 +26,11 @@ npm.cmd run build
 npm.cmd start
 ```
 
-Open **http://127.0.0.1:4318**. The header should show **home-support-v6**. If you see an older interface, stop the old server, rebuild, restart and reload. A new frontend detects an older API and explains the mismatch.
+Open **http://127.0.0.1:4318**. The header should show **playback-desktop-v7**. If you see an older interface, stop the old server, rebuild, restart and reload. A new frontend detects an older API and explains the mismatch. Stop this browser server before launching the desktop app: both use port 4318.
 
 On macOS/Linux, use npm instead of npm.cmd. Node 24 unit tests, typechecks and build are also checked locally on Windows during this continuation. The standalone process-group smoke harness targets Linux; physical network and Glances compatibility require separate verification.
 
-Build cleans only generated dist/server files; it never touches data. SQLite upgrades transactionally to schema v2. **Stop Neo and back up your database before updating:** real discovery results are preserved; see [Windows backup and rollback](docs/glances.md#windows-update-and-database-backup). Legacy synthetic rows remain stored but are excluded from normal inventory, evidence, activity, ambiguity warnings and collection capacity. There is no public fixture submission endpoint.
+Build cleans only generated dist/server files; it never touches data. SQLite upgrades transactionally to schema **3**, adding bounded playback history while preserving existing inventory/jobs/stats. **Stop Neo and back up your database before updating:** older builds refuse schema 3; roll back using the pre-upgrade backup. See [Windows backup and rollback](docs/glances.md#windows-update-and-database-backup). Legacy synthetic rows remain stored but are excluded from normal inventory, evidence, activity, ambiguity warnings and collection capacity. There is no public fixture submission endpoint.
 
 ## Real discovery
 
@@ -47,9 +57,9 @@ Saved diagnoses show partial results, findings and a clear next step. Repeat dur
 
 ## Safety and data
 
-The UI/API binds to 127.0.0.1 only. Host/Origin/client-header guards are present, but there is no user authentication. Do not expose it through a LAN/public proxy, tunnel or container mapping.
+The normal browser and desktop front ends bind to 127.0.0.1 only. Their Host/Origin/client-header guards are local browser defenses, not user authentication. The separate opt-in `start:service` entry point requires an explicit listen address, exact HTTPS origin, valid certificate/key and a strong administrative token. Do not expose the local entry point or publish the service to the public Internet. Use the reviewed private LAN/VPN path described in [deployment](deploy/README.md).
 
-Data is stored locally in data/neo.sqlite, or an explicit local NEO_DB_PATH. Stop Neo before backup; preserve SQLite sidecars if present. Network addresses, DNS names, settings and advertisements are private metadata. Inventory and reports stay local. Approved DNS recipients receive the queried names; public Internet checks expose the collector's source IP to their listed recipients. No credentials are required for these checks.
+The browser version stores data in data/neo.sqlite or an explicit NEO_DB_PATH; desktop standalone uses its OS application-data folder; remote mode stores reports and inventory on the selected server. Stop Neo before backup; preserve SQLite sidecars if present. Network addresses, DNS names, settings and advertisements are private metadata. Importing playback in remote mode sends that minimized report to the selected server. Approved DNS recipients receive queried names; public Internet checks expose the collector's source IP to their listed recipients. Video-account credentials are never collected.
 
 Identity remains source/job/address-scoped; IP/MAC claims never merge devices permanently. Health remains unknown; timestamps, expiry and unverified claims are visible. Node workers isolate trusted-code hangs, not hostile code or OS capabilities. Storage is bounded to 200 visible jobs and 10,000 visible observations; legacy samples do not consume the real-data allowance.
 
@@ -80,4 +90,4 @@ The NOC and Systems views show friendly PTR names, advertised services and evide
 
 Choose **Inspect system → Connect system stats** for a real, one-shot Glances REST API v4 read. Review the exact IP, scheme, port and six fixed GET paths, then approve it. CPU, memory, uptime and per-mount filesystem capacity are reported values with timestamps and partial errors. The default port 61208 is a suggestion, not a discovered port. Authentication-required endpoints stop without credential attempts. No integration installation, recurring polling or credential setup is performed. See [Glances scope and setup](docs/glances.md).
 
-This update adds SQLite schema v2 with a stats-history table; existing discovery and quarantined legacy data are retained. Back up the SQLite database while Neo is stopped before updating. Older schema-v1 binaries cannot open a v2 database; do not roll back the binary against the upgraded database. No data wipe is needed.
+Glances introduced the schema-v2 stats-history table. The current playback release advances to schema 3 while retaining discovery, stats and quarantined legacy data. Back up SQLite while Neo is stopped; restore the pre-upgrade backup to roll back an older binary. No data wipe is needed.

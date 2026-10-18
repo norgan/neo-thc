@@ -4,6 +4,7 @@
 @media(max-width:560px){.shell{padding:0 15px}.masthead{padding:25px 0}.masthead h1{font-size:3rem}.local-label{max-width:130px}.masthead .eyebrow{font-size:.57rem}.masthead p{font-size:.75rem}.notice{font-size:.8rem}.stats{gap:8px}.stats>div{padding:14px 10px}.stats strong{font-size:1.6rem}.stats span{font-size:.7rem}.asset-grid{grid-template-columns:1fr}.panel{padding:19px}.section-title{align-items:flex-start}.section-title>.badge{display:none}.row{align-items:flex-start}.actions{flex-direction:column}.actions button{width:100%}footer{flex-direction:column}nav button{font-size:.85rem;padding:8px 10px}dl{grid-template-columns:1fr 1.9fr}}
 
 select { width: 100%; max-width: 100%; padding: .7rem; border: 1px solid var(--line); border-radius: .5rem; background: white; color: inherit; font: inherit; }
+.table-scroll{max-width:100%;overflow:auto}table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;padding:.6rem;border-bottom:1px solid #d2ded3;white-space:nowrap}input[type=file]{display:block;max-width:100%;margin:12px 0}section>section.panel{margin:20px 0}.local-label{max-width:45%;overflow-wrap:anywhere}.local-label>strong{display:block}
 
 .field textarea { width:100%; max-width:100%; min-height:5rem; resize:vertical; font:inherit; padding:.7rem; color:inherit; background:#fff; border:1px solid #8daba0; border-radius:.5rem; }
 

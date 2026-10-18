@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import type { Asset, Job, Observation, ObservationInput, GlancesStats } from '../shared/types.js';
+import type {PlaybackCapture,PlaybackRecord} from '../shared/playback.js';
 
 export const MAX_OBSERVATIONS = 10_000;
 export const MAX_JOBS = 200;
@@ -18,7 +19,7 @@ export class Store {
     this.db = new DatabaseSync(path, { timeout: 1_000 });
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
     const version = this.db.prepare('PRAGMA user_version').get() as { user_version: number };
-    if (version.user_version > 2) {
+    if (version.user_version > 3) {
       this.db.close();
       throw new Error('Database schema is newer than this application');
     }
@@ -32,7 +33,8 @@ export class Store {
       'CREATE TABLE IF NOT EXISTS jobs (' +
       'id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, payload TEXT NOT NULL);' +
       'CREATE TABLE IF NOT EXISTS stats_snapshots (id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, asset_id TEXT NOT NULL REFERENCES assets(id), sampled_at INTEGER NOT NULL, payload TEXT NOT NULL);' +
-      'PRAGMA user_version = 2;'
+      'CREATE TABLE IF NOT EXISTS playback_reports (id TEXT PRIMARY KEY, imported_at INTEGER NOT NULL, payload TEXT NOT NULL);' +
+      'PRAGMA user_version = 3;'
     );this.db.exec('COMMIT');}
     catch(error){try{this.db.exec('ROLLBACK');}finally{this.db.close();}throw error;}
   }
@@ -175,5 +177,12 @@ export class Store {
       .run(snapshot.id,snapshot.requestId,snapshot.assetId,snapshot.sampledAt,JSON.stringify(snapshot));
   }
 
+  playback():PlaybackRecord[]{return (this.db.prepare('SELECT payload FROM playback_reports ORDER BY imported_at DESC, rowid DESC LIMIT 200').all() as {payload:string}[]).map(row=>JSON.parse(row.payload) as PlaybackRecord);}
+  savePlayback(capture:PlaybackCapture):PlaybackRecord {
+    const count=this.db.prepare('SELECT COUNT(*) AS count FROM playback_reports').get() as {count:number};
+    if(count.count>=200)throw new Error('Playback history is full. Existing reports are retained.');
+    const record:PlaybackRecord={id:randomUUID(),importedAt:Date.now(),capture};
+    this.db.prepare('INSERT INTO playback_reports (id,imported_at,payload) VALUES (?,?,?)').run(record.id,record.importedAt,JSON.stringify(record));return record;
+  }
   close(): void { this.db.close(); }
 }

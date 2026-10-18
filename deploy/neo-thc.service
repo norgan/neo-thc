@@ -1,0 +1,26 @@
+[Unit]
+Description=NEO THC authenticated home collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=neo-thc
+Group=neo-thc
+WorkingDirectory=/opt/neo-thc
+Environment=NEO_SERVICE_CONFIG=/etc/neo-thc/service.json
+ExecStart=/usr/bin/node /opt/neo-thc/dist/server/server/service.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/neo-thc
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

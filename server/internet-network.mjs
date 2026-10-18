@@ -11,7 +11,7 @@ export class InternetCleanupError extends Error {}
  * @param {string} file @param {string[]} args @param {AbortSignal} signal @param {number} timeout
  * @param {Record<string,string>} env @param {boolean} includeStderr @returns {Promise<string|null>}
  */
-async function command(file,args,signal,timeout,env={},includeStderr=false){
+export async function command(file,args,signal,timeout,env={},includeStderr=false){
   signal.throwIfAborted();
   return new Promise((resolve,reject)=>{
     let closed=false,aborted=false;

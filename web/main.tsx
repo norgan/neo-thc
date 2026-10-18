@@ -5,10 +5,12 @@ import { systemViews } from '../shared/inventory.js';
 import { SystemStats } from './SystemStats.js';
 import { Discovery } from './Discovery.js';
 import {Diagnostics} from './Diagnostics.js';
+import {Playback} from './Playback.js';
+import {Connection} from './Connection.js';
 import './style.css';
 
-type Tab='NOC'|'Systems'|'Network'|'Diagnostics'|'System'|'Activity'|'Settings';
-const tabs:Tab[]=['NOC','Systems','Network','Diagnostics','System','Activity','Settings'];
+type Tab='NOC'|'Systems'|'Network'|'Diagnostics'|'Playback'|'System'|'Activity'|'Settings';
+const tabs:Tab[]=['NOC','Systems','Network','Diagnostics','Playback','System','Activity','Settings'];
 const activeJob=(job:Job)=>job.status==='queued'||job.status==='running';
 const issueText:Record<string,string>={
   access_denied:'The operating system denied this method. Review local security/firewall policy; Neo did not change it.',
@@ -72,7 +74,7 @@ function App() {
       try {
         const next=await request<Snapshot>('/api/v1/snapshot',{signal:controller.signal});
         if(!controller.signal.aborted){
-          if(next.runtime!=='home-support-v6'){setLoadError('The API is an older build. Stop Neo, rebuild, restart the API and reload this page.');return;}
+          if(next.runtime!=='playback-desktop-v7'){setLoadError('The API is an older build. Stop Neo, rebuild, restart the API and reload this page.');return;}
           setSnapshot(next);setLoadError('');
         }
       } catch {if(!controller.signal.aborted)setLoadError('The local API is unavailable. Displayed information may be out of date. Start the API, then retry.');}
@@ -111,7 +113,7 @@ function App() {
   }
   return <div className="shell">
     <header className="masthead"><div><div className="eyebrow">THE HOMELAB COMPANION</div><h1>neo<span>THC</span></h1><p>Network Environment Overview</p></div>
-      <div className="local-label"><span className="dot"/> Local home tech support<br/><strong>{snapshot?.runtime??'Connecting'}</strong></div></header>
+      <div className="local-label"><span className="dot"/> <Connection/><strong>{snapshot?.runtime??'Connecting'}</strong></div></header>
 
     <nav aria-label="Main navigation">{tabs.map((item)=><button key={item} className={tab===item?'selected':''} aria-current={tab===item?'page':undefined} onClick={()=>setTab(item)}>{item}</button>)}</nav>
     <main><div aria-live="polite">
@@ -120,6 +122,7 @@ function App() {
       {snapshot?.collectionError&&<div className="error">{snapshot.collectionError}</div>}
     </div>
     <Diagnostics active={tab==='Diagnostics'} selectedJobId={diagnosticSelection} jobs={diagnosticJobs} blockedReason={blockedReason} onUpdated={()=>setRefresh((value)=>value+1)} onCancel={(job)=>void cancel(job)}/>
+    <Playback active={tab==='Playback'}/>
     {(running||snapshot?.statsActive)&&<div className="notice" role="status">Collection is active. You can keep using this overview. <button onClick={()=>setTab('Activity')}>View activity</button>{running&&<button disabled={busy} onClick={()=>void cancel(running)}>Cancel collection</button>}</div>}
     {tab==='NOC'&&<section className="panel"><div className="section-title"><div><h2>Network operations centre</h2><p>Observed systems, service evidence, collection availability and reported capacity</p></div><div className="actions"><button className="primary" onClick={()=>setTab('Diagnostics')}>Diagnose slow Internet or streaming</button><button onClick={openDiscovery}>Add or rescan systems</button></div></div>
       <div className="metric-grid"><div><span>Systems with responses</span><strong>{systems.filter((system)=>system.responded).length}</strong></div>
@@ -135,7 +138,7 @@ function App() {
       <section className="panel"><h3>Delivered services</h3><p>Services are listed separately from infrastructure. Advertisements and port hints may describe the same multi-role system; they do not establish dependency links.</p>
         {systems.some((system)=>system.services.length)?<ul>{systems.flatMap((system)=>system.services.map((service)=><li key={system.key+service.key}><strong>{service.name}</strong> · {system.displayName} · {service.confidence==='advertised'?'advertised':'port hint'} · observed {time(service.observedAt)}<p className="muted">{service.evidence}</p></li>))}</ul>:<p>No service evidence recorded yet.</p>}</section>
     </section>}
-    {tab==='Settings'&&<section className="panel"><h2>Settings</h2><h3>Network discovery</h3><p>Choose a local interface, scan scope, common-port profile and optional existing Glances reads. Nothing starts until you review and approve a new job.</p><button onClick={openDiscovery}>Configure discovery</button><h3>Local runtime</h3><p>{snapshot?.runtime??'Connecting'} · localhost-only UI and local storage. Discovery remains a one-off action; stats snapshots do not refresh automatically.</p></section>}
+    {tab==='Settings'&&<section className="panel"><h2>Settings</h2><Connection settings/><h3>Network discovery</h3><p>Choose a collector interface, scan scope, common-port profile and optional existing Glances reads. Nothing starts until you review and approve a new job.</p><button onClick={openDiscovery}>Configure discovery</button><h3>Runtime</h3><p>{snapshot?.runtime??'Connecting'} · Discovery remains a one-off action; stats snapshots do not refresh automatically.</p></section>}
     {(tab==='Systems'||tab==='NOC')&&<section><div className="section-title"><div><h2>Your systems</h2><p>{systems.filter((system)=>system.responded).length} address views with observed responses</p></div><button onClick={openDiscovery}>Discover systems</button></div>
       <label className="field">Find a name, service or role<input value={search} onChange={(event)=>setSearch(event.target.value)} placeholder="Glances, file sharing, web…"/></label>
       <label className="check"><input type="checkbox" checked={showAttempts} onChange={(event)=>setShowAttempts(event.target.checked)}/>Show all address attempts, including unanswered ones ({systems.length})</label>

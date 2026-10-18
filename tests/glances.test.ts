@@ -145,7 +145,7 @@ test('additive schema upgrade preserves legacy rows and records genuine stats wi
     const upgraded=new Store(path);
     try {assert.equal(upgraded.assets().length,1);assert.equal(upgraded.jobs().length,1);assert.deepEqual(upgraded.stats(),[]);}
     finally {upgraded.close();}
-    const check=new DatabaseSync(path);assert.equal((check.prepare('PRAGMA user_version').get() as {user_version:number}).user_version,2);check.close();
+    const check=new DatabaseSync(path);assert.equal((check.prepare('PRAGMA user_version').get() as {user_version:number}).user_version,3);check.close();
   } finally {await rm(dir,{recursive:true,force:true});}
 });
 

@@ -1,6 +1,6 @@
 ## Current runtime correction
 
-The production app is real-only (home-support-v6): NOC/Systems/Network/Diagnostics/System/Activity/Settings, with discovery in a secondary modal and no fixture collection route. Optional existing Glances enrichment is part of the reviewed discovery job only when explicitly enabled. Synthetic legacy database rows are retained but excluded before evidence projection, ambiguity summaries and capacity checks. Tests inject fixtures from tests/support; production build excludes that directory. Interface/CIDR/DNS defaults come from bounded local configuration reads, never network queries. Method diagnostics are host-validated and partial completion remains explicit.
+The production app is real-only (playback-desktop-v7): NOC/Systems/Network/Diagnostics/System/Activity/Settings, with discovery in a secondary modal and no fixture collection route. Optional existing Glances enrichment is part of the reviewed discovery job only when explicitly enabled. Synthetic legacy database rows are retained but excluded before evidence projection, ambiguity summaries and capacity checks. Tests inject fixtures from tests/support; production build excludes that directory. Interface/CIDR/DNS defaults come from bounded local configuration reads, never network queries. Method diagnostics are host-validated and partial completion remains explicit.
 
 The [home support workbench](diagnostics.md) uses exact scope/approval and the shared job manager. Targeted DNS/TCP/TLS uses a fixed isolated worker. The Internet runner owns abortable native DNS/HTTPS requests and fixed, bounded OS ping/settings subprocesses directly so cancellation can kill and await their closure; it disables further collection if process cleanup cannot be confirmed. Only fixed YouTube/Netflix names and fixed Cloudflare ping/MTU/download recipients are built into the media profile; optional gateway and DNS recipients are explicit literals. Reports stay in existing job JSON (schema v2), preserving partial results and interruption recovery without creating inventory assets. No network setting is changed. Constructor-only probe injection supports isolated tests and is unavailable over HTTP.
 
@@ -20,24 +20,18 @@ The original collector milestone passed 26 unit tests and 12 desktop/mobile Chro
 - server/discovery-scope.ts, discovery-network.mjs and discovery-protocols.mjs: scope/budget validation, bounded real transports and packet parsers
 - server/glances-enrichment.ts, glances-mdns.mjs and glances-worker.mjs: consented bounded endpoint resolution, revalidation and enrichment
 - server/glances.ts: fixed six-path, source-bound HTTP/HTTPS stats transport and normalization
-- server/store.ts: SQLite schema v2 (additive transactional stats history), transactional observation writes, source-scoped identity and evidence projection
+- server/store.ts: SQLite schema v3 (additive transactional stats history), transactional observation writes, source-scoped identity and evidence projection
 - server/jobs.ts: input validation, idempotent submission, concurrency slot, bounded scheduler and cancellation
 - server/app.ts: loopback-facing API and built static files; sanitized errors and browser-origin guards
 - server/main.ts: fixed loopback listener, database path and shutdown
 - web/main.tsx, Discovery.tsx and SystemStats.tsx: NOC, systems/network/evidence views, consented discovery modal and stats controls
 - scripts/smoke.mjs: bounded Linux CI check of npm start, production assets, actual compiled loopback TCP/Glances transports and clean shutdown
 
-## Approved deployment direction; implementation remains local
+## Desktop and split collector placement
 
-Agentless collection is the default product direction: use permitted APIs and read-only protocols wherever possible. A site collector is an application component, not a mandatory per-device agent. Endpoint agents are optional only for capabilities unavailable agentlessly, with an explicit capability/privilege explanation.
+The desktop bundles Electron with an owned Node utility process and serves its packaged UI on loopback. Standalone owns SQLite and discovery locally. Remote mode owns a local fixed-route proxy and native device checks, while the explicitly selected authenticated TLS service owns storage, network diagnostics and discovery. Credentials stay outside the renderer; optional persistence requires protected OS encryption. Every discovery scope remains collector-validated and explicitly approved. See [placement and trust boundary](deployment-modes.md) and [deployment instructions](../deploy/README.md). No hosted control plane, multi-user roles or real second-host deployment is claimed.
 
-Two modes are intended:
-1. **Colocated:** collector, local API/storage and served interface installed together. The current real-only application implements the local starting point for this mode.
-2. **Split:** collector stays on-premises; the interface is hosted remotely. This does not by itself choose a remote API, remote storage or a remote control plane.
-
-See [deployment modes and trust boundary](deployment-modes.md) for the decision record. Managed-system credentials stay at the collector. The proposed connection is collector-initiated, authenticated and encrypted, with explicit pairing/site identity and collector-enforced scopes. Any hosted scheduling would submit bounded authorized job requests, never arbitrary commands or scans. Offline buffering, backpressure, replay-safe reconnection, data recipients/retention and revocation must be designed and reviewed first.
-
-The current executable has no pairing, remote channel, remote authentication or endpoint-agent runtime. Its fixed loopback listener, Host/Origin checks and CSP remain unchanged; do not expose it or relax those guards to simulate split deployment.
+Playback uses the user-activated browser companion, schema-validated report preview/import and an additive bounded history table. It reads the actual existing browser video element without moving Netflix into Electron or collecting account/media data. Native Windows Wi-Fi retains only normalized signal/link fields. See [playback diagnosis](playback.md).
 
 ## Discovery vertical slice
 
@@ -70,7 +64,7 @@ All routes are under /api/v1:
 - POST /assets/:id/glances/preview and /assets/:id/glances/read: review or consent to one fixed stats endpoint
 - POST /stats/:id/cancel: cancel the active manual stats read
 
-Mutation requests require JSON and X-Neo-Client: local-ui. Host must exactly match a supported localhost/127.0.0.1 app port; browser Origin, when present, must match those local origins. Cross-origin requests receive no CORS allowance. Requests are limited to 8 KiB. These are local browser-exposure defenses, not authentication.
+Mutation requests require JSON and X-Neo-Client: local-ui. In local mode Host/Origin match supported localhost/127.0.0.1 ports. The separate service entry point requires TLS, the configured HTTPS Host/Origin and an administrative bearer token on every route. There is no CORS allowance. Existing job requests stay limited to 8 KiB; strictly validated playback imports allow 64 KiB. The desktop proxy accepts only fixed existing API routes, with a 64 KiB request and 4 MiB response cap; tokens and server configuration never enter the renderer. Local browser guards are exposure defenses, not authentication.
 
 Historical test-only fixture submission (POST /jobs is absent from production):
 
@@ -98,11 +92,11 @@ Total target attempts, completed attempts, cycles and accepted observation count
 
 ## Storage and operating limits
 
-SQLite uses foreign keys, WAL, bound statements, a 1-second busy timeout and atomic observation batches. Internal job JSON is saved after each attempted target and cycle. Schema version 2 adds stats snapshots transactionally; versions above 2 are rejected. Run only one application process against a database. There is no multi-process job coordinator.
+SQLite uses foreign keys, WAL, bound statements, a 1-second busy timeout and atomic observation batches. Internal job JSON is saved after each attempted target and cycle. Schema version 2 adds stats snapshots transactionally; versions above 3 are rejected. Run only one application process against a database. There is no multi-process job coordinator.
 
 The scheduler caps visible job count at 200, visible observations at 10,000 and stats snapshots at 500. Quarantined synthetic rows do not consume real discovery capacity. Capacity failures keep existing data, report collection failure, and do not silently remove evidence. A long-running installation still needs a designed retention/export policy.
 
-The data directory is created with mode 0700 when newly created on supporting systems. Files inherit process umask; no encryption or secret vault is implemented. Protect real metadata using the host's disk/access controls. Discovery modal edits persist in component memory while the page stays open; closing it clears consent.
+The data directory is created with mode 0700 when newly created on supporting systems. Inventory and report databases remain unencrypted; protect real metadata using host disk/access controls. Optional remembered desktop service tokens use protected OS safeStorage encryption and reject basic_text storage. Service token/private-key files require owner-controlled permissions. Discovery modal edits persist in component memory while the page stays open; closing it clears consent.
 
 ## Future collectors and optional endpoint agent
 

@@ -60,3 +60,45 @@ jobs:
             test-results/
           if-no-files-found: warn
           retention-days: 3
+
+  desktop:
+    name: Windows desktop packaging and owned runtime
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci --no-fund
+      - run: npm run build
+      - name: Package Windows app
+        run: npm run package:desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Exercise actual packaged desktop and shutdown
+        run: node scripts/desktop-smoke.mjs
+        env:
+          NEO_DESKTOP_PROOF_DIR: desktop-proof
+      - name: Exercise desktop connection UI and verified TLS mode switching
+        shell: pwsh
+        run: |
+          $env:PATH = 'C:\Program Files\Git\usr\bin;' + $env:PATH
+          node scripts/desktop-integration.mjs
+        env:
+          NEO_DESKTOP_PROOF_DIR: desktop-proof
+      - run: npm run package:service
+      - name: Preserve installable apps, server bundle and proof
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-and-server
+          path: |
+            release/*.exe
+            release/*server.zip
+            desktop-proof/
+          if-no-files-found: warn
+          retention-days: 7

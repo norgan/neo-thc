@@ -16,7 +16,7 @@ const job=(id='dns-browser-job',value=report(),plan:DiagnosticPlan=dnsPlan,statu
   status,createdAt:Date.now(),startedAt:Date.now(),finishedAt:status==='running'?null:Date.now(),completedTargets:status==='running'?0:1,totalTargets:1,cyclesCompleted:1,observationsAdded:0,errors:[],diagnosticReport:value,
 });
 async function setup(page:Page,history:()=>Job[]=()=>[],targeted=true){
-  await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:{runtime:'home-support-v6',synthetic:false,collectionError:null,assets:[],systems:[],stats:[],jobs:history(),targets:[]}}));
+  await page.route('**/api/v1/snapshot',(route)=>route.fulfill({json:{runtime:'playback-desktop-v7',synthetic:false,collectionError:null,assets:[],systems:[],stats:[],jobs:history(),targets:[]}}));
   await page.route('**/api/v1/diagnostics/options',(route)=>route.fulfill({json:{source:'Controlled interface DNS configuration',gateway:'192.0.2.1',resolvers:[
     {interface:'Test interface',address:'192.0.2.53',family:4,supported:true},{interface:'Test interface',address:'2001:db8::53',family:6,supported:true},
     {interface:'Test interface',address:'fe80::1',family:6,supported:false}],interfaces:[{name:'Test interface',address:'2001:db8::10',family:'IPv6'}]}}));
