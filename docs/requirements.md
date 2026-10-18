@@ -94,7 +94,7 @@ An opt-in initial IPv4 discovery slice now has source for explicit interface/CID
 
 ## DNS and connection diagnosis milestone — 18 October 2026
 
-Diagnostics implements selected-resolver A/AAAA timing/outcome checks on an explicit DNS port, optional OS resolution, saved reports and separately approved exact-address IPv4/IPv6 TCP/TLS checks. Home Internet and streaming adds fixed YouTube/Netflix DNS checks, three gateway/Internet ICMP samples, bounded IPv4 DF MTU probing, local MTU/DHCP/default-route evidence and an optional capped Cloudflare download. Missing replies remain inconclusive and capacity is not reported as observed playback quality. Shared job/cancel/storage controls retain partial evidence and changes no network settings. Continuous monitoring, actual video playback traces, full IPv6 inventory discovery and automated DNS setup remain further work. See [diagnostics](diagnostics.md) and current PR checks.
+Diagnostics implements selected-resolver A/AAAA timing/outcome checks on an explicit DNS port, optional OS resolution, saved reports and separately approved exact-address IPv4/IPv6 TCP/TLS checks. Home Internet and streaming adds fixed YouTube/Netflix DNS checks, three gateway/Internet ICMP samples, bounded IPv4 DF MTU probing, local MTU/DHCP/DNS-suffix/gateway configuration and an optional capped Cloudflare download. Missing replies remain inconclusive and capacity is not reported as observed playback quality. Shared job/cancel/storage controls retain partial evidence and change no network settings. Continuous monitoring, actual video playback traces, full IPv6 inventory discovery and automated DNS setup remain further work. See [diagnostics](diagnostics.md) and current PR checks.
 
 ## Historical fixture verification
 

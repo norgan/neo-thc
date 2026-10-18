@@ -88,7 +88,7 @@ export function Diagnostics({active,selectedJobId,jobs,blockedReason,onUpdated,o
     </details>
     {preview&&<section className="panel notice"><h3>Approve these exact checks</h3>
       {preview.plan.kind==='internet'?<><p className="break">{MEDIA_HOSTS.join(' and ')} → {preview.plan.resolvers.join(', ')} · DNS port {preview.plan.port} · A + AAAA</p>
-        <p className="break">Three ICMP echo samples to {preview.plan.gateway?preview.plan.gateway+' and ':''}{INTERNET_TARGET}. Up to eleven IPv4 probes to {INTERNET_TARGET} with fragmentation disabled. Read local interface MTU, DHCP and default-route evidence.</p>
+        <p className="break">Three ICMP echo samples to {preview.plan.gateway?preview.plan.gateway+' and ':''}{INTERNET_TARGET}. Up to eleven IPv4 probes to {INTERNET_TARGET} with fragmentation disabled. Read local MTU, DHCP, DNS suffix and gateway configuration.</p>
         <p>{preview.plan.download?'Download at most 8 MiB of response body from https://'+DOWNLOAD_HOST+'/__down over verified TLS. No redirects, cookies, login or upload.':'No capacity download selected.'}</p></>:
       preview.plan.kind==='dns'?<><p className="break"><strong>{preview.plan.hostname}</strong> → {preview.plan.resolvers.join(', ')} · DNS port {preview.plan.port??53} · A + AAAA</p>
         {preview.plan.systemLookup&&<p>Also use this collector’s operating-system name resolution, including its configured DNS/VPN/hosts policy.</p>}</>:
@@ -148,8 +148,8 @@ function AddressEvidence({report}:{report:DiagnosticReport}){
     {report.connections.map((row,index)=><li className="break" key={index}><strong>IPv{row.family} · {row.address.includes(':')?'['+row.address+']':row.address}:{row.port}</strong><p>TCP: {row.tcp.replaceAll('_',' ')} · TLS: {row.tls.replaceAll('_',' ')} · {row.durationMs} ms</p><p>Local source: {row.sourceAddress??'not established'}</p></li>)}</ul>;
 }
 function InternetResult({check}:{check:InternetCheck}){
-  if(check.kind==='settings')return <div className="notice"><h4>Local interface settings</h4><p>{check.status==='read'?'Detected default IPv4 gateway: '+(check.gateway??'not available'):'Settings read unavailable'}</p>
-    <ul>{check.interfaces.map((row,index)=><li className="break" key={index}>{row.name} · IPv{row.family} · MTU {row.mtu} · {row.defaultRoute?'default-route interface':'other interface'} · DHCP {row.dhcp===null?'unknown':row.dhcp?'enabled':'disabled'}</li>)}</ul></div>;
+  if(check.kind==='settings')return <div className="notice"><h4>Local interface settings</h4><p>{check.status==='read'?'Detected IPv4 gateway: '+(check.gateway??'not available or ambiguous'):'Settings read unavailable'}</p>
+    <ul>{check.interfaces.map((row,index)=><li className="break" key={index}>{row.name} · IPv{row.family} · MTU {row.mtu} · {row.defaultRoute?'configured-gateway interface':'other interface'} · DHCP {row.dhcp===null?'unknown':row.dhcp?'enabled':'disabled'}{row.dnsSuffix?' · DNS suffix '+row.dnsSuffix:''}</li>)}</ul></div>;
   if(check.kind==='latency'){const summary=latencySummary(check);return <div className="notice"><h4 className="break">Ping samples to {check.target}</h4>
     <p>{summary.replies}/{summary.sent} replies · average {summary.averageMs===null?'unavailable':summary.averageMs.toFixed(1)+' ms'} · successive RTT variation {summary.variationMs===null?'unavailable':summary.variationMs.toFixed(1)+' ms'}</p>
     <p>{summary.lossPercent===null?'Some probes were unavailable.':summary.lossPercent.toFixed(0)+'% missing replies in this small ICMP sample.'} This does not measure dropped video frames or media packet loss.</p></div>;}

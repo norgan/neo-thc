@@ -36,7 +36,7 @@ export function internetFindings(report:DiagnosticReport):DiagnosticFinding[]{
       nextStep:'Compare at the TV/device during a stall. Check YouTube “Stats for nerds” for buffer health and dropped frames, or the Netflix app’s network check; also inspect device load and Wi-Fi.'});
     else if(check.kind==='settings'){
       if(check.status==='unavailable')findings.push({code:'settings_unavailable',title:'Local MTU/settings could not be read',detail:'The current platform did not provide the bounded interface read.',nextStep:'Check the active adapter, default route, DNS servers, interface MTU and VPN manually before changing settings.'});
-      else if(check.interfaces.some((row)=>row.defaultRoute&&(row.mtu>1500||row.family===6&&row.mtu<1280)))findings.push({code:'interface_mtu',title:'Review the active interface MTU',detail:'A default-route interface has a jumbo MTU or an IPv6 MTU below 1280. Jumbo frames can be intentional; this setting alone does not identify a fault.',nextStep:'Compare the active adapter with the WAN/VPN MTU and the path probe. Check the affected device before changing any MTU.'});
+      else if(check.interfaces.some((row)=>row.defaultRoute&&(row.mtu>1500||row.family===6&&row.mtu<1280)))findings.push({code:'interface_mtu',title:'Review the interface MTU',detail:'An interface with a configured gateway has a jumbo MTU or an IPv6 MTU below 1280. Jumbo frames can be intentional; this setting alone does not identify a fault.',nextStep:'Compare the active adapter with the WAN/VPN MTU and the path probe. Check the affected device before changing any MTU.'});
     }
   }
   return findings;

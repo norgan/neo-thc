@@ -16,10 +16,15 @@ export function parseDiagnosticDns(raw:string):{interface:string;address:string;
 }
 export async function diagnosticOptions(signal=new AbortController().signal){
   signal.throwIfAborted();
+  const [dnsRead,settingsRead]=await Promise.allSettled([
+    process.platform==='win32'?windowsDnsConfiguration(signal):Promise.resolve(null),
+    internetSettings(AbortSignal.any([signal,AbortSignal.timeout(4200)])),
+  ]);
+  signal.throwIfAborted();
   let configured:ReturnType<typeof parseDiagnosticDns>=[],source='System-wide DNS configuration';
   if(process.platform==='win32'){
     try{
-      const raw=await windowsDnsConfiguration(signal);if(!raw)throw new Error('config');
+      const raw=dnsRead.status==='fulfilled'?dnsRead.value:null;if(!raw)throw new Error('config');
       configured=parseDiagnosticDns(raw);source='Windows IPv4 and IPv6 interface DNS configuration';
     }catch{source='System-wide DNS configuration (interface read unavailable)';}
   }
@@ -31,7 +36,7 @@ export async function diagnosticOptions(signal=new AbortController().signal){
   const resolvers=[...system.map((row)=>({...row,interface:configured.find((entry)=>entry.address===row.address)?.interface??row.interface})),
     ...configured.filter((row)=>!known.has(row.address))];
   let gateway:string|null=null;
-  try{const settings=await internetSettings(AbortSignal.any([signal,AbortSignal.timeout(4200)]));if(settings.gateway&&isIP(settings.gateway)===4)gateway=settings.gateway;}catch{}
+  if(settingsRead.status==='fulfilled'&&settingsRead.value.gateway&&isIP(settingsRead.value.gateway)===4)gateway=settingsRead.value.gateway;
   signal.throwIfAborted();
   return {source,resolvers,interfaces,gateway};
 }

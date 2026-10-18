@@ -30,16 +30,33 @@ async function command(file,args,signal,timeout,env={},includeStderr=false){
 const powershell=()=>join(process.env.SystemRoot??'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
 /** @param {AbortSignal} signal */
 export async function windowsDnsConfiguration(signal){
-  return command(powershell(),['-NoProfile','-NonInteractive','-Command','[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; @(Get-DnsClientServerAddress | Select-Object InterfaceAlias,ServerAddresses) | ConvertTo-Json -Compress -Depth 3'],signal,2000);
+  const script=`[Console]::OutputEncoding=[System.Text.Encoding]::UTF8
+$rows=@(foreach($link in ([System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() | Select-Object -First 128)){
+  try{[pscustomobject]@{InterfaceAlias=$link.Name;ServerAddresses=@($link.GetIPProperties().DnsAddresses | Select-Object -First 16 | ForEach-Object { $_.IPAddressToString })}}catch{}
+})
+ConvertTo-Json -InputObject $rows -Compress -Depth 3`;
+  return command(powershell(),['-NoProfile','-NonInteractive','-Command',script],signal,4000);
 }
 const settingsScript=`[Console]::OutputEncoding=[System.Text.Encoding]::UTF8
-$routes=@(Get-NetRoute -DestinationPrefix '0.0.0.0/0','::/0' -ErrorAction Stop)
-$gateway=$routes | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' -and $_.NextHop -ne '0.0.0.0' } | Sort-Object RouteMetric | Select-Object -First 1 -ExpandProperty NextHop
-$rows=@(Get-NetIPInterface -ConnectionState Connected -ErrorAction Stop | Where-Object { $_.NlMtu -ge 68 -and $_.NlMtu -le 65535 } | Select-Object -First 64 | ForEach-Object {
-  $adapter=$_
-  [pscustomobject]@{name=$adapter.InterfaceAlias;family=($(if($adapter.AddressFamily -eq 'IPv4'){4}else{6}));mtu=[int]$adapter.NlMtu;defaultRoute=([bool]($routes | Where-Object InterfaceIndex -eq $adapter.InterfaceIndex));dhcp=($adapter.Dhcp -eq 'Enabled')}
-})
-[pscustomobject]@{kind='settings';status='read';gateway=$gateway;interfaces=$rows} | ConvertTo-Json -Compress -Depth 4`;
+$rows=@();$candidates=@();$failed=0
+$links=@([System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() | Where-Object { $_.OperationalStatus -eq 'Up' -and $_.NetworkInterfaceType -ne 'Loopback' } | Select-Object -First 32)
+foreach($link in $links){
+  try{
+    $p=$link.GetIPProperties();$hasGateway=(@($p.GatewayAddresses).Count -gt 0)
+    $candidates+=@($p.GatewayAddresses | Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' -and $_.Address.IPAddressToString -ne '0.0.0.0' } | ForEach-Object { $_.Address.IPAddressToString })
+    foreach($family in 4,6){
+      $af=$(if($family -eq 4){'InterNetwork'}else{'InterNetworkV6'})
+      if(@($p.UnicastAddresses | Where-Object { $_.Address.AddressFamily -eq $af }).Count -eq 0){continue}
+      $v=$(if($family -eq 4){$p.GetIPv4Properties()}else{$p.GetIPv6Properties()})
+      if($null -eq $v -or $v.Mtu -lt 68 -or $v.Mtu -gt 65535){continue}
+      $rows+=[pscustomobject]@{name=$link.Name;family=$family;mtu=[int]$v.Mtu;defaultRoute=$hasGateway;dhcp=($(if($family -eq 4){[bool]$v.IsDhcpEnabled}else{$null}));dnsSuffix=$p.DnsSuffix}
+    }
+  }catch{$failed++}
+}
+$unique=@($candidates | Sort-Object -Unique);$gateway=$(if($unique.Count -eq 1){$unique[0]}else{$null})
+$status=$(if($failed -gt 0 -and $rows.Count -eq 0){'unavailable'}else{'read'})
+if($status -eq 'unavailable'){$gateway=$null}
+[pscustomobject]@{kind='settings';status=$status;gateway=$gateway;interfaces=$rows} | ConvertTo-Json -Compress -Depth 4`;
 /** Local settings only; unavailable stays explicit. @param {AbortSignal} signal @returns {Promise<Extract<import('../shared/types.js').InternetCheck,{kind:'settings'}>>} */
 export async function internetSettings(signal){
   if(process.platform==='win32'){
@@ -47,7 +64,7 @@ export async function internetSettings(signal){
     if(raw){try{return JSON.parse(raw.replace(/^\uFEFF/,''));}catch{}}
   }else if(process.platform==='linux'){
     try{
-      const routes=(await readFile('/proc/net/route','utf8')).split('\n').slice(1).map((line)=>line.trim().split(/\s+/)).filter((row)=>row[1]==='00000000'&&row[2]&&row[2]!=='00000000');
+      const routes=(await readFile('/proc/net/route','utf8')).split('\n').slice(1).map((line)=>line.trim().split(/\s+/)).filter((row)=>row[1]==='00000000'&&row[2]&&row[2]!=='00000000').sort((a,b)=>Number(a[6])-Number(b[6]));
       const gateway=routes[0]?routes[0][2].match(/../g)?.reverse().map((byte)=>parseInt(byte,16)).join('.')??null:null;
       /** @type {Extract<import('../shared/types.js').InternetCheck,{kind:'settings'}>['interfaces']} */const interfaces=[];
       for(const [name,rows] of Object.entries(networkInterfaces()).slice(0,32)){

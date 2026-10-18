@@ -7,7 +7,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {createApp} from '../server/app.js';
 import {parseDiagnostic,validateDiagnosticResult} from '../server/diagnostics.js';
 import {validateInternetCheck,type InternetProbes} from '../server/internet-runner.js';
-import {mtuCheck,transferCheck,InternetCleanupError} from '../server/internet-network.mjs';
+import {mtuCheck,transferCheck,internetSettings,InternetCleanupError} from '../server/internet-network.mjs';
 import {Store} from '../server/store.js';
 import {diagnosticFindings,dnsOutcomeLabel} from '../shared/diagnostics.js';
 import {internetFindings,latencySummary,DOWNLOAD_BYTES,DOWNLOAD_HOST,MEDIA_HOSTS,INTERNET_TARGET} from '../shared/internet.js';
@@ -137,4 +137,9 @@ test('shutdown aborts and awaits an in-flight configuration read before closing 
   const response=app.inject({url:'/api/v1/diagnostics/options',headers}).then((value)=>value);
   const until=Date.now()+2000;while(!started&&Date.now()<until)await delay(5);assert.ok(started);
   await app.close();assert.ok(stopped);assert.equal((await response).body.includes('private config detail'),false);
+});
+test('native local interface metadata is readable without public probes and unknown DHCP stays explicit',async()=>{
+  const value=await internetSettings(AbortSignal.timeout(6000));validateInternetCheck(value,'settings');
+  if(['win32','linux'].includes(process.platform))assert.equal(value.status,'read');else assert.equal(value.status,'unavailable');
+  for(const row of value.interfaces){assert.ok(row.mtu>=68&&row.mtu<=65535);if(process.platform==='win32'&&row.family===6)assert.equal(row.dhcp,null);}
 });

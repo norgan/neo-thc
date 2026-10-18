@@ -176,7 +176,7 @@ export interface DiagnosticFinding {code:string;title:string;detail:string;nextS
 export type PingStatus='reply'|'timeout'|'too_big'|'unreachable'|'unavailable';
 export interface PingSample {status:PingStatus;rttMs:number|null;}
 export type InternetCheck =
-  | {kind:'settings';status:'read'|'unavailable';gateway:string|null;interfaces:{name:string;family:4|6;mtu:number;defaultRoute:boolean;dhcp:boolean|null}[]}
+  | {kind:'settings';status:'read'|'unavailable';gateway:string|null;interfaces:{name:string;family:4|6;mtu:number;defaultRoute:boolean;dhcp:boolean|null;dnsSuffix?:string}[]}
   | {kind:'latency';target:string;samples:PingSample[];durationMs:number}
   | {kind:'mtu';target:string;status:'at_least_1500'|'reduced'|'inconclusive';mtu:number|null;probes:{payload:number;status:PingStatus}[];durationMs:number}
   | {kind:'transfer';status:'complete'|'deadline'|'http_error'|'tls_error'|'unavailable'|'byte_cap';bytes:number;durationMs:number;mbps:number|null};

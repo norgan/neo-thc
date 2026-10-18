@@ -39,7 +39,7 @@ A run may finish **completed with issues** when individual methods encounter a d
 
 ## Diagnose Internet, streaming, DNS and IPv4/IPv6 connections
 
-Open **Diagnostics → Home Internet and streaming** for a guided YouTube/Netflix DNS check, gateway versus Internet ping samples, IPv4 path MTU and local interface MTU/DHCP/default-route evidence. An optional download of at most 8 MiB from Cloudflare estimates streaming capacity against published guidance. The exact recipients, targets, data budget and 45-second limit are shown before approval. Results are snapshots from the collector; playback resolution, dropped frames, DRM and sustained video-CDN quality are not inferred.
+Open **Diagnostics → Home Internet and streaming** for a guided YouTube/Netflix DNS check, gateway versus Internet ping samples, IPv4 path MTU and local MTU/DHCP/DNS-suffix/gateway configuration. An optional download of at most 8 MiB from Cloudflare estimates streaming capacity against published guidance. The exact recipients, targets, data budget and 45-second limit are shown before approval. Results are snapshots from the collector; playback resolution, dropped frames, DRM and sustained video-CDN quality are not inferred.
 
 For a specific name, enter its full hostname or choose **YouTube DNS / Netflix DNS**. Select configured resolvers and their DNS port (53 normally; a selected custom port can test Unbound or another fallback). Neo records A/AAAA answers, TTLs, timings and distinct errors, with optional OS resolution labelled separately. Missing AAAA explains why ping -6 can fail while IPv4 works; NXDOMAIN remains distinct. Select exact returned IPv4/IPv6 addresses to separately approve TCP and certificate-verified TLS on one service port.
 

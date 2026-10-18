@@ -14,8 +14,9 @@ export function validateInternetCheck(value:unknown,kind:InternetCheck['kind'],t
   if(kind==='settings'){
     keys(row,['kind','status','gateway','interfaces']);
     if(!['read','unavailable'].includes(String(row.status))||(row.gateway!==null&&(typeof row.gateway!=='string'||isIP(row.gateway)!==4))||!Array.isArray(row.interfaces)||row.interfaces.length>64)throw new Error('settings');
-    for(const value of row.interfaces){const item=object(value);keys(item,['name','family','mtu','defaultRoute','dhcp']);
-      if(typeof item.name!=='string'||!item.name.length||item.name.length>256||item.family!==4&&item.family!==6||!number(item.mtu,68,65535)||!Number.isInteger(item.mtu)||typeof item.defaultRoute!=='boolean'||item.dhcp!==null&&typeof item.dhcp!=='boolean')throw new Error('interface');}
+    for(const value of row.interfaces){const item=object(value);keys(item,['name','family','mtu','defaultRoute','dhcp','dnsSuffix']);
+      if(typeof item.name!=='string'||!item.name.length||item.name.length>256||item.family!==4&&item.family!==6||!number(item.mtu,68,65535)||!Number.isInteger(item.mtu)||typeof item.defaultRoute!=='boolean'||item.dhcp!==null&&typeof item.dhcp!=='boolean'||
+        item.dnsSuffix!==undefined&&(typeof item.dnsSuffix!=='string'||item.dnsSuffix.length>253||/[\x00-\x1f\x7f]/.test(item.dnsSuffix)))throw new Error('interface');}
     if(row.status==='unavailable'&&(row.interfaces.length||row.gateway!==null))throw new Error('unavailable');
   }else{
     if(!number(row.durationMs,0,15000))throw new Error('duration');
