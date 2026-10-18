@@ -7,6 +7,7 @@ import { Discovery } from './Discovery.js';
 import {Diagnostics} from './Diagnostics.js';
 import {Playback} from './Playback.js';
 import {Connection} from './Connection.js';
+import {applyTheme, initialTheme, saveTheme, type Theme} from './theme.js';
 import './style.css';
 
 type Tab='NOC'|'Systems'|'Network'|'Diagnostics'|'Playback'|'System'|'Activity'|'Settings';
@@ -50,6 +51,9 @@ function Evidence({ observation }: { observation: Observation }) {
 
 
 function App() {
+  const [theme,setTheme]=useState<Theme>(initialTheme);
+  const [themeSaved,setThemeSaved]=useState(true);
+  function chooseTheme(next:Theme){applyTheme(next);setTheme(next);setThemeSaved(saveTheme(next));}
   const [tab,setTab]=useState<Tab>('NOC');
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
   const [loadError,setLoadError]=useState('');
@@ -113,7 +117,7 @@ function App() {
   }
   return <div className="shell">
     <header className="masthead"><div><div className="eyebrow">THE HOMELAB COMPANION</div><h1>neo<span>THC</span></h1><p>Network Environment Overview</p></div>
-      <div className="local-label"><span className="dot"/> <Connection/><strong>{snapshot?.runtime??'Connecting'}</strong></div></header>
+      <div className="header-tools"><div className="local-label"><span className="dot"/> <Connection/><strong>{snapshot?.runtime??'Connecting'}</strong></div><button className="theme-toggle" aria-label={theme==='dark'?'Switch to light mode':'Switch to dark mode'} onClick={()=>chooseTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?'Dark mode':'Light mode'}</button></div></header>
 
     <nav aria-label="Main navigation">{tabs.map((item)=><button key={item} className={tab===item?'selected':''} aria-current={tab===item?'page':undefined} onClick={()=>setTab(item)}>{item}</button>)}</nav>
     <main><div aria-live="polite">
@@ -138,7 +142,7 @@ function App() {
       <section className="panel"><h3>Delivered services</h3><p>Services are listed separately from infrastructure. Advertisements and port hints may describe the same multi-role system; they do not establish dependency links.</p>
         {systems.some((system)=>system.services.length)?<ul>{systems.flatMap((system)=>system.services.map((service)=><li key={system.key+service.key}><strong>{service.name}</strong> · {system.displayName} · {service.confidence==='advertised'?'advertised':'port hint'} · observed {time(service.observedAt)}<p className="muted">{service.evidence}</p></li>))}</ul>:<p>No service evidence recorded yet.</p>}</section>
     </section>}
-    {tab==='Settings'&&<section className="panel"><h2>Settings</h2><Connection settings/><h3>Network discovery</h3><p>Choose a collector interface, scan scope, common-port profile and optional existing Glances reads. Nothing starts until you review and approve a new job.</p><button onClick={openDiscovery}>Configure discovery</button><h3>Runtime</h3><p>{snapshot?.runtime??'Connecting'} · Discovery remains a one-off action; stats snapshots do not refresh automatically.</p></section>}
+    {tab==='Settings'&&<section className="panel"><h2>Settings</h2><section><h3>Appearance</h3><label className="field">Theme<select value={theme} onChange={event=>chooseTheme(event.target.value as Theme)}><option value="dark">Dark</option><option value="light">Light</option></select></label><p className="muted">{themeSaved?'Dark is the default. Your choice is saved on this device.':'The theme is set for this session. Browser storage is unavailable, so it cannot be saved.'}</p></section><Connection settings/><h3>Network discovery</h3><p>Choose a collector interface, scan scope, common-port profile and optional existing Glances reads. Nothing starts until you review and approve a new job.</p><button onClick={openDiscovery}>Configure discovery</button><h3>Runtime</h3><p>{snapshot?.runtime??'Connecting'} · Discovery remains a one-off action; stats snapshots do not refresh automatically.</p></section>}
     {(tab==='Systems'||tab==='NOC')&&<section><div className="section-title"><div><h2>Your systems</h2><p>{systems.filter((system)=>system.responded).length} address views with observed responses</p></div><button onClick={openDiscovery}>Discover systems</button></div>
       <label className="field">Find a name, service or role<input value={search} onChange={(event)=>setSearch(event.target.value)} placeholder="Glances, file sharing, web…"/></label>
       <label className="check"><input type="checkbox" checked={showAttempts} onChange={(event)=>setShowAttempts(event.target.checked)}/>Show all address attempts, including unanswered ones ({systems.length})</label>
