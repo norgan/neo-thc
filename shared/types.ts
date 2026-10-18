@@ -159,21 +159,29 @@ export interface GlancesEnrichment {
 }
 
 export type DiagnosticPlan =
-  | {kind:'dns';hostname:string;resolvers:string[];systemLookup:boolean}
-  | {kind:'connect';hostname:string;dnsJobId:string;addresses:string[];port:number;tls:boolean};
+  | {kind:'dns';hostname:string;resolvers:string[];port?:number;systemLookup:boolean}
+  | {kind:'connect';hostname:string;dnsJobId:string;addresses:string[];port:number;tls:boolean}
+  | {kind:'internet';hostname:string;resolvers:string[];port:number;gateway:string|null;download:boolean};
 export type DnsOutcome='answer'|'no_data'|'nxdomain'|'not_found'|'servfail'|'refused'|'timeout'|'cancelled'|'unavailable'|'response_cap';
 export type TcpOutcome='connected'|'refused'|'timeout'|'unreachable'|'unavailable';
 export type TlsOutcome='verified'|'certificate_error'|'handshake_error'|'timeout'|'not_requested'|'not_reached';
 export interface DnsCheck {
-  kind:'dns';source:string;recordType:'A'|'AAAA'|'system';status:DnsOutcome;durationMs:number;
+  kind:'dns';source:string;recordType:'A'|'AAAA'|'system';status:DnsOutcome;durationMs:number;port?:number;hostname?:string;
   answers:{address:string;family:4|6;ttl:number|null}[];
 }
 export interface ConnectionCheck {
   kind:'connect';address:string;family:4|6;port:number;sourceAddress:string|null;tcp:TcpOutcome;tls:TlsOutcome;durationMs:number;
 }
 export interface DiagnosticFinding {code:string;title:string;detail:string;nextStep:string;}
+export type PingStatus='reply'|'timeout'|'too_big'|'unreachable'|'unavailable';
+export interface PingSample {status:PingStatus;rttMs:number|null;}
+export type InternetCheck =
+  | {kind:'settings';status:'read'|'unavailable';gateway:string|null;interfaces:{name:string;family:4|6;mtu:number;defaultRoute:boolean;dhcp:boolean|null}[]}
+  | {kind:'latency';target:string;samples:PingSample[];durationMs:number}
+  | {kind:'mtu';target:string;status:'at_least_1500'|'reduced'|'inconclusive';mtu:number|null;probes:{payload:number;status:PingStatus}[];durationMs:number}
+  | {kind:'transfer';status:'complete'|'deadline'|'http_error'|'tls_error'|'unavailable'|'byte_cap';bytes:number;durationMs:number;mbps:number|null};
 export interface DiagnosticReport {
   complete:boolean;
-  hostname:string;kind:'dns'|'connect';vantage:string;startedAt:number;updatedAt:number;
-  dns:DnsCheck[];connections:ConnectionCheck[];findings:DiagnosticFinding[];
+  hostname:string;kind:'dns'|'connect'|'internet';vantage:string;startedAt:number;updatedAt:number;
+  dns:DnsCheck[];connections:ConnectionCheck[];findings:DiagnosticFinding[];internet?:InternetCheck[];
 }

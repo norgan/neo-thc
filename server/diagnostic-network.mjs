@@ -11,16 +11,19 @@ function dnsCode(error){
 }
 /** Fixed DNS operation; resolverFactory permits isolated test endpoints only through code injection.
  * @param {string} hostname @param {string} source @param {'A'|'AAAA'} recordType
- * @param {()=>Resolver} resolverFactory
+ * @param {number} port @param {()=>Resolver} resolverFactory @param {AbortSignal|undefined} signal
  * @returns {Promise<import('../shared/types.js').DnsCheck>}
  */
-export async function dnsCheck(hostname,source,recordType,resolverFactory=()=>new Resolver({timeout:1200,tries:1})){
+export async function dnsCheck(hostname,source,recordType,port=53,resolverFactory=()=>new Resolver({timeout:1200,tries:1}),signal=undefined){
+  if(!Number.isInteger(port)||port<1||port>65535)throw new Error('port');
   const started=Date.now(),resolver=resolverFactory();
-  /** @type {import('../shared/types.js').DnsCheck} */const row={kind:'dns',source,recordType,status:'unavailable',answers:[],durationMs:0};
+  /** @type {import('../shared/types.js').DnsCheck} */const row={kind:'dns',source,recordType,port,status:'unavailable',answers:[],durationMs:0};
   let timedOut=false;
   const timer=setTimeout(()=>{timedOut=true;resolver.cancel();},1500);
+  const abort=()=>resolver.cancel();signal?.addEventListener('abort',abort,{once:true});
   try {
-    resolver.setServers([source.includes(':')?'['+source+']':source]);
+    if(signal?.aborted){row.status='cancelled';return row;}
+    resolver.setServers([(source.includes(':')?'['+source+']':source)+':'+port]);
     const records=await (recordType==='A'?resolver.resolve4(hostname+'.',{ttl:true}):resolver.resolve6(hostname+'.',{ttl:true}));
     if(records.length>16){row.status='response_cap';return row;}
     for(const record of records){
@@ -29,7 +32,7 @@ export async function dnsCheck(hostname,source,recordType,resolverFactory=()=>ne
     }
     row.status=records.length?'answer':'no_data';
   }catch(error){row.status=timedOut?'timeout':dnsCode(error);row.answers=[];}
-  finally{clearTimeout(timer);resolver.cancel();row.durationMs=Date.now()-started;}
+  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);resolver.cancel();row.durationMs=Date.now()-started;}
   return row;
 }
 /** OS resolver behavior is separate from direct DNS and has no observed TTL.

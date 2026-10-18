@@ -1,8 +1,8 @@
-# DNS/IPv6 diagnostic extension — 18 October 2026
+# Home support diagnostic extension — 18 October 2026
 
-The network-diagnostics-v5 extension adds [a targeted DNS/connection workbench](diagnostics.md), with scoped A/AAAA and optional OS lookup, separately approved IPv4/IPv6 TCP/TLS, saved timing/outcomes, explicit uncertainty, cancellation and restart recovery. It reuses schema-v2 job storage. Personal live results remain outside the repository.
+The home-support-v6 extension adds [home Internet and streaming diagnosis](diagnostics.md): YouTube/Netflix DNS, gateway/Internet ICMP samples, IPv4 path MTU, local interface settings and an optional bounded Cloudflare transfer. Targeted DNS supports custom ports and distinguishes NODATA from NXDOMAIN; separately approved IPv4/IPv6 TCP/TLS remains available. It reuses schema-v2 job storage. Personal live results remain outside the repository.
 
-New unit tests exercise strict scope/consent, saved-address binding, IPv6 configuration, resolver/OS/transport distinctions, partial conclusions, redaction, idempotency, shared capacity, cancellation, forged/late messages, restart recovery and actual isolated DNS/IPv4/IPv6/TLS. Eight new desktop/mobile cases exercise the visible flow. Existing discovery navigation expectations now include Diagnostics and the shared collection lock. Production smoke adds an actual compiled diagnostic TCP worker on loopback.
+Unit tests exercise fixed Internet scope, no probes during preview, optional transfer, cancellation/cleanup, shared capacity, exact DNS port/hostname binding, MTU success/reduction/inconclusive evidence, capacity bounds, HTTPS redirect refusal and partial conclusions. Actual isolated DNS/IPv4/IPv6/TLS tests include compiled/source diagnostic workers and custom DNS ports. Desktop/mobile cases cover exact previews, budget consent, settings, findings, interrupted reports and stale-API locking. CI never submits public/LAN diagnostics. Production smoke executes compiled diagnostic/discovery/Glances loopback transports and graceful shutdown.
 
 Read [current PR checks](https://github.com/norgan/neo-thc/pull/1/checks) for the exact published head. The records below describe the previously verified overview/shutdown milestone.
 

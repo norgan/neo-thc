@@ -16,7 +16,7 @@ const asset={id:'qa-asset',subjectKey:'qa-job/192.0.2.1',label:evidence.label,ki
 const job=(status='running')=>({id:'qa-job',synthetic:false,requestId:'qa-request',spec:{mode:'initial',scope:['discovery:ipv4'],exclusions:[],intervalMs:1000,maxCycles:1,maxDurationMs:60000,discovery:plan},
   status,createdAt:Date.now(),startedAt:Date.now(),finishedAt:null,completedTargets:0,totalTargets:1,cyclesCompleted:0,observationsAdded:1,errors:[],
   discoveryProgress:{addressesCompleted:1,totalAddresses:1,tcpCompleted:1,dnsCompleted:0,datagramsSent:0}});
-const snapshot=(assets:unknown[]=[],jobs:unknown[]=[])=>({runtime:'network-diagnostics-v5',synthetic:false,collectionError:null,assets,jobs,targets:[]});
+const snapshot=(assets:unknown[]=[],jobs:unknown[]=[])=>({runtime:'home-support-v6',synthetic:false,collectionError:null,assets,jobs,targets:[]});
 const nav=(page:Page,name:string)=>page.getByRole('navigation').getByRole('button',{name,exact:true});
 async function openDiscovery(page:Page){await nav(page,'Settings').click();await page.getByRole('button',{name:'Configure discovery'}).click();await expect(page.getByRole('dialog')).toBeVisible();}
 async function closeDiscovery(page:Page){await page.getByRole('button',{name:'Close discovery',exact:true}).click();await expect(page.getByRole('dialog')).not.toBeVisible();}
@@ -31,7 +31,7 @@ test('normal production opens real discovery with no demo controls or automatic 
   await expect(nav(page,'NOC')).toHaveAttribute('aria-current','page');
   await expect(page.getByRole('heading',{name:'Network operations centre'})).toBeVisible();await openDiscovery(page);
   await expect(page.getByRole('heading',{name:'Scoped IPv4 discovery'})).toBeVisible();
-  await expect(page.getByText('network-diagnostics-v5',{exact:true})).toBeVisible();
+  await expect(page.getByText('home-support-v6',{exact:true})).toBeVisible();
   await expect(page.getByText(/Synthetic demo only|Demo storage|Collect initial fixtures|Live fixture updates/)).toHaveCount(0);
   await expect(page.getByRole('combobox',{name:'Source interface'})).toHaveValue('');
   for(const box of await page.getByRole('checkbox').all())await expect(box).not.toBeChecked();
@@ -197,7 +197,7 @@ test('Glances access is explicit, single-submit and renders genuine zero/partial
 test('an unavailable or mismatched API disables stats access from a cached selected system',async({page})=>{
   let mode='ready';
   await page.route('**/api/v1/snapshot',(route)=>mode==='offline'?route.abort('failed'):route.fulfill({json:{
-    ...snapshot([asset]),runtime:mode==='old'?'older-runtime':'network-diagnostics-v5'}}));
+    ...snapshot([asset]),runtime:mode==='old'?'older-runtime':'home-support-v6'}}));
   await page.route('**/api/v1/assets/qa-asset',(route)=>route.fulfill({json:{asset,observations:[evidence]}}));
   await page.goto('/');await page.getByRole('button',{name:'Inspect system'}).click();
   await expect(page.getByRole('button',{name:'Review stats access'})).toBeEnabled();

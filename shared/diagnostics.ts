@@ -18,6 +18,11 @@ export function connectionAddressProblem(address:string):string|null {
 export function diagnosticAddresses(report:DiagnosticReport):string[] {
   return [...new Set(report.dns.flatMap((row)=>row.answers.map((answer)=>canonicalAddress(answer.address))))];
 }
+export function dnsOutcomeLabel(status:DnsCheck['status']):string {
+  return ({answer:'Address returned',no_data:'No address record of this type (NODATA)',nxdomain:'Missing name or alias target (NXDOMAIN)',
+    not_found:'Operating system found no address',servfail:'DNS server failed (SERVFAIL)',refused:'DNS server refused the query',timeout:'No reply before the deadline',
+    cancelled:'Cancelled',unavailable:'Check unavailable',response_cap:'Response exceeded the address limit'})[status];
+}
 export function diagnosticFindings(report:DiagnosticReport):DiagnosticFinding[] {
   if(!report.complete)return [];
   const findings:DiagnosticFinding[]=[];
@@ -37,13 +42,21 @@ export function diagnosticFindings(report:DiagnosticReport):DiagnosticFinding[] 
       'The individual outcomes distinguish NXDOMAIN, no record, refusal, SERVFAIL and timeout. This does not identify the cause.',
       'Check the configured resolver and authoritative records for this name. Repeat after the connection has recovered.');
     if(answers.some((row)=>row.recordType==='A')&&direct.some((row)=>row.recordType==='AAAA')&&
-      direct.filter((row)=>row.recordType==='AAAA').every((row)=>row.status==='no_data'||row.status==='nxdomain'))
+      direct.filter((row)=>row.recordType==='AAAA').every((row)=>row.status==='no_data'))
       add('ipv4_only','IPv4 records are available; IPv6 records are absent',
-        'An IPv4-only service can work normally. Missing AAAA records alone do not establish an IPv6 fault.',
-        'Check an approved IPv4 endpoint. Investigate AAAA only if this service is intended to support IPv6.');
+        'ping -6 needs an IPv6 address. These AAAA queries returned no data, so it can report “could not find host” while the name resolves over IPv4. This alone does not establish an IPv6 connectivity fault.',
+        'If this service should support IPv6, verify its stable IPv6 address and listener, then check its AAAA record or local DNS rewrite.');
+    if(direct.some((row)=>row.status==='nxdomain'&&direct.some((peer)=>peer.source===row.source&&peer.recordType!==row.recordType&&peer.status==='answer')))
+      add('name_conflict','Address and NXDOMAIN results conflict',
+        'One resolver returned an address for one record type and NXDOMAIN for the other. NXDOMAIN describes a missing name or alias target; it is different from a missing AAAA record.',
+        'Inspect local A/AAAA rewrites, aliases and cached responses on that resolver, then compare the intended DNS view.');
+    if(direct.some((row)=>row.status==='timeout'))add('dns_timeout','A selected DNS endpoint did not reply within the deadline',
+      'A timeout can reflect the client path, a listener, a firewall rule or the DNS service. It does not prove the resolver is unavailable to its other clients.',
+      'Check the selected DNS port and client access rules. For a fallback resolver, also test from its forwarding server; its access may differ from this collector.');
     const byResolver=new Map<string,DnsCheck[]>();
     for(const row of direct)byResolver.set(row.source,[...(byResolver.get(row.source)??[]),row]);
-    const sets=[...byResolver.values()].map((rows)=>[...new Set(rows.flatMap((row)=>row.answers.map((answer)=>canonicalAddress(answer.address))))].sort().join(','));
+    const sets=[...byResolver.values()].map((rows)=>rows.map((row)=>row.recordType+':'+row.status+':'+
+      [...new Set(row.answers.map((answer)=>canonicalAddress(answer.address)))].sort().join(',')).sort().join('|'));
     if(new Set(sets).size>1)add('resolver_difference','The selected resolvers disagree',
       'Different answers or errors can reflect split DNS, caching, filtering or load balancing. TTLs are recorded; disagreement alone does not prove a bad record.',
       'Compare the intended internal/external DNS view and the DNS servers advertised to the affected client.');

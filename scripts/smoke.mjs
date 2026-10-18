@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { Worker } from 'node:worker_threads';
 import { createServer } from 'node:net';
 import {createServer as createHttpServer} from 'node:http';
+import {createSocket} from 'node:dgram';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, access } from 'node:fs/promises';
@@ -103,6 +104,30 @@ try {
     }finally{await diagnostic.terminate();}
   } finally {await worker.terminate();await new Promise((resolve)=>listener.close(resolve));}
   assert.equal(batches.length,1);assert.equal(batches[0].ports[0].state,'open');
+  // Actual compiled DNS worker with one exact non-default UDP port, isolated from public DNS.
+  const dnsSocket=createSocket('udp4');await new Promise((resolve)=>dnsSocket.bind(0,'127.0.0.1',resolve));
+  const queried=[];
+  dnsSocket.on('message',(query,sender)=>{
+    const type=query.readUInt16BE(query.length-4);queried.push(type);
+    const header=Buffer.from(query.subarray(0,12));header.writeUInt16BE(0x8180,2);header.writeUInt16BE(1,6);
+    const record=Buffer.alloc(12);record.writeUInt16BE(0xc00c);record.writeUInt16BE(type,2);record.writeUInt16BE(1,4);record.writeUInt32BE(30,6);
+    const data=type===1?Buffer.from([192,0,2,1]):Buffer.from('20010db8000000000000000000000001','hex');record.writeUInt16BE(data.length,10);
+    dnsSocket.send(Buffer.concat([header,query.subarray(12),record,data]),sender.port,sender.address);
+  });
+  const dnsWorker=new Worker(new URL('../dist/server/server/diagnostic-worker.mjs',import.meta.url),{
+    workerData:{v:1,attemptId:randomUUID(),plan:{kind:'dns',hostname:'compiled.example',resolvers:['127.0.0.1'],port:dnsSocket.address().port,systemLookup:false}},execArgv:[],env:{},stdout:true,stderr:true,
+  });dnsWorker.stdout.resume();dnsWorker.stderr.resume();
+  try{
+    const rows=[];await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('Compiled DNS worker deadline')),5000);dnsWorker.once('error',(error)=>{clearTimeout(timer);reject(error);});
+      dnsWorker.on('message',(raw)=>{const message=JSON.parse(raw);if(message.type==='result')rows.push(message.result);if(message.type==='done'){
+        clearTimeout(timer);try{assert.equal(message.count,2);assert.equal(rows.length,2);assert.ok(rows.every((row)=>row.status==='answer'&&row.port===dnsSocket.address().port&&row.answers[0].ttl===30));resolve();}catch(error){reject(error);}
+      }});
+    });assert.deepEqual(queried,[1,28]);console.log('PASS: actual compiled diagnostic DNS worker, exact non-default loopback UDP port, A/AAAA and TTLs');
+  }finally{await dnsWorker.terminate();await new Promise((resolve)=>dnsSocket.close(resolve));}
+  const {mtuCheck}=await import('../dist/server/server/internet-network.mjs');
+  const mtu=await mtuCheck('1.1.1.1',controller.signal,async()=>[{status:'reply',rttMs:1}]);
+  assert.equal(mtu.status,'at_least_1500');assert.equal(mtu.mtu,1500);console.log('PASS: compiled home-support module and shared policy, injected MTU evidence only; no public probes');
   // Actual compiled read-only HTTP transport, isolated loopback endpoint and synthetic payload only.
   const {readGlances,GLANCES_PATHS}=await import('../dist/server/server/glances.js');
   const paths=[];
@@ -136,7 +161,7 @@ try {
     try {
       const response = await api('/api/v1/health');
       const health = await response.json();
-      return health.status === 'ok' && health.synthetic === false && health.runtime === 'network-diagnostics-v5';
+      return health.status === 'ok' && health.synthetic === false && health.runtime === 'home-support-v6';
     } catch { return false; }
   }, 10_000, 'Compiled server never became ready');
 
@@ -162,7 +187,7 @@ try {
   assert.equal(inventory.assets[0].latest.services[0].note.includes('open'),true);
   const snapshot=await (await api('/api/v1/snapshot')).json();
   assert.equal(snapshot.systems.length,1);assert.equal(snapshot.systems[0].responded,true);
-  assert.equal(snapshot.runtime,'network-diagnostics-v5');assert.deepEqual(snapshot.targets,[]);
+  assert.equal(snapshot.runtime,'home-support-v6');assert.deepEqual(snapshot.targets,[]);
   const removed=await fetch(base+'/api/v1/jobs',{method:'POST',headers:{'Content-Type':'application/json','X-Neo-Client':'local-ui'},
     body:JSON.stringify({requestId:'no-runtime-fixture',mode:'initial',scope:['fixture:nas']}),signal:AbortSignal.timeout(1000)});
   assert.equal(removed.status,404);

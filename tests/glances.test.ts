@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createServer,type Server,type RequestListener} from 'node:http';
+import {createServer,type Server,type RequestListener,type IncomingMessage} from 'node:http';
 import {setTimeout as delay} from 'node:timers/promises';
 import {mkdtemp,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {createServer as createHttpsServer} from 'node:https';
+import {createServer as createHttpsServer,request as httpsRequest,type RequestOptions} from 'node:https';
 import {DatabaseSync} from 'node:sqlite';
 import {glancesRequest,readGlances,normalizeGlances,GLANCES_PATHS,GlancesError,type GlancesTarget} from '../server/glances.js';
 import {createApp} from '../server/app.js';
@@ -15,6 +15,7 @@ import {parseDiscovery} from '../server/discovery-scope.js';
 import {discoveryObservation} from '../server/discovery-runner.js';
 import {Store} from '../server/store.js';
 import {connectionCheck} from '../server/diagnostic-network.mjs';
+import {transferCheck} from '../server/internet-network.mjs';
 import type {Job,DiscoveryInterface} from '../shared/types.js';
 const sample:Record<string,unknown>={
   '/api/4/version':'4.5.8','/api/4/system':{hostname:'server.example',os_name:'Example OS',os_version:'1',secret:'drop'},
@@ -200,6 +201,9 @@ test('HTTPS rejects an untrusted certificate without sending application request
       assert.equal(requests,0);
       const diagnosis=await connectionCheck('cloud.example','127.0.0.1',address.port,true);
       assert.equal(diagnosis.tcp,'connected');assert.equal(diagnosis.tls,'certificate_error');assert.equal(requests,0);
+      const transfer=await transferCheck(new AbortController().signal,((options:RequestOptions,callback:(value:IncomingMessage)=>void)=>
+        httpsRequest({...options,hostname:'127.0.0.1',port:address.port,servername:'cloud.example'},callback)) as typeof httpsRequest);
+      assert.equal(transfer.status,'tls_error');assert.equal(transfer.bytes,0);assert.equal(requests,0);
     } finally {server.closeAllConnections();await new Promise<void>((resolve)=>server.close(()=>resolve()));}
   } finally {await rm(dir,{recursive:true,force:true});}
 });

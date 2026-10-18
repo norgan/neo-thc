@@ -3,7 +3,8 @@
   "include": [
     "server/**/*.ts",
     "server/**/*.mjs",
-    "shared/**/*.ts"
+    "shared/**/*.ts",
+    "shared/**/*.mjs"
   ],
   "exclude": [
     "tests",

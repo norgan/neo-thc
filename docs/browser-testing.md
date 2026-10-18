@@ -1,6 +1,6 @@
-# Current browser suite: network-diagnostics-v5
+# Current browser suite: home-support-v6
 
-The suite now has 18 cases in each of the two Chromium viewports (36 total), adding DNS preview/consent and visible IPv6 configuration, exact-address IPv4/IPv6 path comparison with next steps, slow resolver/TTL/history interpretation, and partial cancellation/stale-API locking. Data is controlled, and no browser test submits public/LAN diagnostics. Read [current PR checks](https://github.com/norgan/neo-thc/pull/1/checks) for exact-head evidence.
+The suite has 21 cases in each of the two Chromium viewports (42 total). Diagnostic cases cover DNS preview/consent and IPv6 configuration, custom DNS ports, missing AAAA explanations, exact-address connection comparison, slow resolver/TTL/history interpretation, and cancellation/stale-API locking. Home streaming cases cover exact recipients, optional download budget, local settings, latency/MTU/capacity interpretation, responsive layout and interrupted evidence without final verdicts. Data is controlled; no browser test submits public/LAN diagnostics. Read [current PR checks](https://github.com/norgan/neo-thc/pull/1/checks) for exact-head evidence.
 
 ## Previous network-overview-v4 evidence
 

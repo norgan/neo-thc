@@ -13,19 +13,22 @@ import {GlancesEnricher,createGlancesWorker} from './glances-enrichment.js';
 import { Store } from './store.js';
 import {DiagnosticRunner,parseDiagnostic,type createDiagnosticWorker} from './diagnostics.js';
 import {diagnosticOptions} from './diagnostic-options.js';
+import {InternetRunner,type InternetProbes} from './internet-runner.js';
+import {internetOperations,INTERNET_DURATION_MS} from '../shared/internet.js';
 
 const allowedHosts = new Set(['127.0.0.1:4318', 'localhost:4318', '127.0.0.1:5173', 'localhost:5173']);
 const allowedOrigins = new Set([...allowedHosts].map((host) => 'http://' + host));
 
-export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker; diagnosticWorkerFactory?:typeof createDiagnosticWorker } = {}) {
+export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker; diagnosticWorkerFactory?:typeof createDiagnosticWorker; internetProbes?:InternetProbes; readDiagnosticOptions?:typeof diagnosticOptions } = {}) {
   const store = new Store(options.dbPath, options.testSupport !== true);
   const discovery = options.discoveryAdapter ?? new DiscoveryCollector();
   const adapter = options.testSupport ? options.adapter ?? discovery : discovery;
   const interfaces = options.discoveryInterfaces ?? localInterfaces;
   const enrichment = new GlancesEnricher(store,interfaces,options.glancesWorkerFactory,options.glancesRead);
-  const jobs = new JobManager(store, adapter, options.probeTimeoutMs, discovery,enrichment,new DiagnosticRunner(options.diagnosticWorkerFactory));
+  const jobs = new JobManager(store, adapter, options.probeTimeoutMs, discovery,enrichment,new DiagnosticRunner(options.diagnosticWorkerFactory,new InternetRunner(options.internetProbes)));
   let statsActive: {requestId:string;controller:AbortController;done:Promise<unknown>}|null=null;
   let statsProblem:string|null=null;
+  const configReads=new Set<{controller:AbortController;done:Promise<unknown>}>();
   const collectionProblem=()=>jobs.problem??statsProblem;
   // Unused browser preconnections and incomplete requests must not hold shutdown open.
   const app = Fastify({ logger: false, bodyLimit: 8_192, requestTimeout: 10_000, trustProxy: false, forceCloseConnections: true });
@@ -54,9 +57,9 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'Not found' }));
 
   const isSynthetic = () => !store.jobs().some((job) => !!job.spec.discovery) && store.assets().every((asset) => asset.latest?.synthetic !== false);
-  app.get('/api/v1/health', async () => ({ status: collectionProblem() ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'network-diagnostics-v5', collector: 'explicit-scope-discovery', collectionError: collectionProblem() }));
+  app.get('/api/v1/health', async () => ({ status: collectionProblem() ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'home-support-v6', collector: 'explicit-scope-discovery', collectionError: collectionProblem() }));
   app.get('/api/v1/snapshot', async () => ({
-    runtime: 'network-diagnostics-v5', synthetic: options.testSupport ? isSynthetic() : false,
+    runtime: 'home-support-v6', synthetic: options.testSupport ? isSynthetic() : false,
     collectionError: collectionProblem(), assets: store.assets(), systems:systemViews(store.assets()), stats:store.stats(), statsActive:statsActive?.requestId??null, jobs: store.jobs(), targets: options.testSupport ? adapter.targets : [],
   }));
   app.get('/api/v1/assets', async () => ({ synthetic: options.testSupport ? isSynthetic() : false, assets: store.assets() }));
@@ -99,10 +102,14 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
     return reply.code(prior ? 200 : 202).send({ job });
   });
 
-  app.get('/api/v1/diagnostics/options',async()=>diagnosticOptions());
+  app.get('/api/v1/diagnostics/options',async(_request,reply)=>{
+    const controller=new AbortController(),read={controller,done:(options.readDiagnosticOptions??diagnosticOptions)(controller.signal)};
+    const abort=()=>controller.abort();configReads.add(read);reply.raw.once('close',abort);
+    try{return await read.done;}finally{reply.raw.removeListener('close',abort);configReads.delete(read);}
+  });
   app.post('/api/v1/diagnostics/preview',async(request)=>{
     const {plan}=parseDiagnostic(request.body,store);
-    return {plan,maxDurationMs:12000,operations:plan.kind==='dns'?plan.resolvers.length*2+(plan.systemLookup?1:0):plan.addresses.length};
+    return {plan,maxDurationMs:plan.kind==='internet'?INTERNET_DURATION_MS:12000,operations:plan.kind==='internet'?internetOperations(plan):plan.kind==='dns'?plan.resolvers.length*2+(plan.systemLookup?1:0):plan.addresses.length};
   });
   app.post('/api/v1/diagnostics/jobs',async(request,reply)=>{
     if(statsActive||statsProblem)throw new RequestError(409,'A stats read is active or unavailable. Finish it before diagnostics.');
@@ -155,7 +162,8 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
     // onClose runs after HTTP requests drain, so cancel work here while its response is still pending.
     const stats = statsActive;
     stats?.controller.abort();
-    await Promise.all([stats?.done, jobs.shutdown()]);
+    for(const read of configReads)read.controller.abort();
+    await Promise.all([stats?.done, jobs.shutdown(),Promise.allSettled([...configReads].map((read)=>read.done))]);
   });
   app.addHook('onClose', async () => { store.close(); });
   return { app, store, jobs };

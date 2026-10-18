@@ -67,6 +67,6 @@ Write-Host "Verified stopped-database backup: $backup"
 
 The default path is data\neo.sqlite relative to Neo's launch directory. NEO_DB_PATH overrides it; a relative override is also resolved from that directory. Clean shutdown normally checkpoints/removes sidecars. The script copies any remaining -wal/-shm together with the main file into a new unique directory and verifies bytes; never overwrite or omit a remaining WAL.
 
-Then update using git pull --ff-only origin feat/initial-foundation, npm.cmd ci, npm.cmd run build and npm.cmd start. Check the visible network-diagnostics-v5 marker.
+Then update using git pull --ff-only origin feat/initial-foundation, npm.cmd ci, npm.cmd run build and npm.cmd start. Check the visible home-support-v6 marker.
 
 For rollback, stop Neo again. Preserve the upgraded database separately. Use the saved source commit in a separate checkout and a fresh copy of the entire backup file set in a new directory; set NEO_DB_PATH to that restored main file before starting the old build. Do not overwrite the only backup, combine old/new sidecars, or point the old binary at the upgraded database. The backup restores only the information present at backup time; subsequent scans/snapshots remain in the preserved upgraded copy.

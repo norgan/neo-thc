@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createServer} from 'node:net';
 import {createSocket} from 'node:dgram';
-import {Resolver} from 'node:dns/promises';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -60,7 +59,9 @@ test('DNS scope is strict, exact and requires new explicit consent',()=>{
     assert.throws(()=>parseDiagnostic(body,store,true));
     assert.throws(()=>parseDiagnostic({...body,confirmed:'true'},store,true));
     assert.deepEqual(parseDiagnostic({...body,resolvers:['2001:db8::53'],confirmed:true},store,true).plan,
-      {kind:'dns',hostname:'cloud.example',resolvers:['2001:db8::53'],systemLookup:false});
+      {kind:'dns',hostname:'cloud.example',resolvers:['2001:db8::53'],port:53,systemLookup:false});
+    assert.equal((parseDiagnostic({...body,port:5353},store).plan as Extract<DiagnosticPlan,{kind:'dns'}>).port,5353);
+    for(const port of [0,65536,53.5,'53',null])assert.throws(()=>parseDiagnostic({...body,port},store));
   }finally{store.close();}
 });
 test('connection approval is bound to fresh saved DNS evidence and selected exact addresses',()=>{
@@ -141,7 +142,8 @@ test('forged worker attempts fail without storing diagnostics and the next job c
   }finally{await app.close();}
 });
 test('real DNS A/AAAA transport uses only its explicitly selected isolated resolver and preserves TTLs',async()=>{
-  const socket=createSocket('udp4');await new Promise<void>((resolve)=>socket.bind(0,'127.0.0.1',resolve));
+  for(const host of ['127.0.0.1','::1']){
+  const socket=createSocket(host==='::1'?'udp6':'udp4');await new Promise<void>((resolve)=>socket.bind(0,host,resolve));
   const calls:number[]=[];
   socket.on('message',(query,sender)=>{
     const type=query.readUInt16BE(query.length-4);calls.push(type);
@@ -151,11 +153,16 @@ test('real DNS A/AAAA transport uses only its explicitly selected isolated resol
     socket.send(Buffer.concat([header,query.subarray(12),rr,data]),sender.port,sender.address);
   });
   try{
-    const factory=()=>{const resolver=new Resolver({timeout:500,tries:1});const address=socket.address();
-      const set=resolver.setServers.bind(resolver);resolver.setServers=()=>set(['127.0.0.1:'+address.port]);return resolver;};
-    const a=await dnsCheck('cloud.example','192.0.2.53','A',factory),aaaa=await dnsCheck('cloud.example','192.0.2.53','AAAA',factory);
+    const port=socket.address().port;
+    const a=await dnsCheck('cloud.example',host,'A',port),aaaa=await dnsCheck('cloud.example',host,'AAAA',port);
     assert.deepEqual(calls,[1,28]);assert.equal(a.answers[0].ttl,45);assert.equal(aaaa.answers[0].address,'2001:db8::1');assert.equal(aaaa.answers[0].family,6);
+    const store=new Store(),source=seed(store),reports:DiagnosticReport[]=[];
+    source.spec.diagnostic={kind:'dns',hostname:'cloud.example',resolvers:[host],port,systemLookup:false};
+    try{assert.equal(await new DiagnosticRunner().run(source,new AbortController().signal,(value)=>reports.push(value)),false);
+      assert.equal(reports.at(-1)!.complete,true);assert.ok(reports.at(-1)!.dns.every((row)=>row.source===host&&row.port===port));assert.deepEqual(calls,[1,28,1,28]);}
+    finally{store.close();}
   }finally{await new Promise<void>((resolve)=>socket.close(()=>resolve()));}
+  }
 });
 test('real TCP checks isolate IPv4 and IPv6 and send no application payload',async()=>{
   for(const host of ['127.0.0.1','::1']){

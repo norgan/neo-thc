@@ -6,7 +6,7 @@ Planning baseline created 13 October 2026; updated the same day with the owner-a
 
 ## Scope and boundaries
 
-A local-first network and homelab overview: what exists, how systems depend on each other, what changed, and what needs attention. Provide an initial discovery pass, ongoing scoped collection, responsive desktop/mobile interface, system recognition, and optional API connections. Prefer agentless collection. Support a collector installed alongside the interface, or an on-premises collector with a remotely hosted interface; the latter is a planned mode, not available in the current runtime.
+A local-first home tech support platform: help the household understand problems, collect relevant evidence, diagnose likely causes, review repairs, and verify the result. Inventory/discovery is one source of evidence. Slow lookups, YouTube/Netflix buffering, lag, Wi-Fi versus upstream problems, MTU, DNS/IPv6 and common settings belong in the support workflow. Provide practical next steps and save/resume without requiring the user to assemble a troubleshooting command list. Prefer agentless collection. Support a collector installed alongside the interface, or an on-premises collector with a remotely hosted interface; the latter is a planned mode, not available in the current runtime.
 
 Initial integration priorities: UniFi, OPNsense, Proxmox. QNAP and Nextcloud follow with product-version and capability checks. Initial operation is read-only toward managed systems.
 
@@ -76,7 +76,7 @@ Acceptance: version-aware read-only operation allowlists; enforced scopes/exclus
 
 ### 3. DNS and guided diagnostics
 
-Add resolver/name/vantage diagnostics, evidence-backed dependencies, grouped incidents and resumable recommendations.
+Add guided home Internet/media diagnostics, resolver/name/vantage evidence, gateway versus upstream latency, packet-loss interpretation, local settings and MTU checks, streaming-capacity estimates, evidence-backed dependencies, grouped incidents and resumable recommendations. Distinguish capacity from actual playback quality, dropped frames, buffering, codec/DRM and service-CDN behavior. Future repair workflows must preserve backups, ownership of DHCP/PTR records and before/after verification.
 
 Acceptance: outcome distinctions, external-query safeguards, caching/split-DNS fixtures, and synthetic NFS failure example without unsupported diagnosis. Local DNS wizard produces a reviewable proposal and verification steps.
 
@@ -94,7 +94,7 @@ An opt-in initial IPv4 discovery slice now has source for explicit interface/CID
 
 ## DNS and connection diagnosis milestone — 18 October 2026
 
-Diagnostics implements selected-resolver A/AAAA timing/outcome checks, optional OS resolution comparison, saved reports and separately approved exact-address IPv4/IPv6 TCP/TLS checks. It presents uncertainty and next steps, shares existing job/cancel/storage controls and changes no network settings. This is a bounded diagnostic slice, not full IPv6 inventory discovery, continuous monitoring, advanced DNS setup or a browser/video trace. See [diagnostics](diagnostics.md) and current PR checks.
+Diagnostics implements selected-resolver A/AAAA timing/outcome checks on an explicit DNS port, optional OS resolution, saved reports and separately approved exact-address IPv4/IPv6 TCP/TLS checks. Home Internet and streaming adds fixed YouTube/Netflix DNS checks, three gateway/Internet ICMP samples, bounded IPv4 DF MTU probing, local MTU/DHCP/default-route evidence and an optional capped Cloudflare download. Missing replies remain inconclusive and capacity is not reported as observed playback quality. Shared job/cancel/storage controls retain partial evidence and changes no network settings. Continuous monitoring, actual video playback traces, full IPv6 inventory discovery and automated DNS setup remain further work. See [diagnostics](diagnostics.md) and current PR checks.
 
 ## Historical fixture verification
 

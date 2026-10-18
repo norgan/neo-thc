@@ -72,7 +72,7 @@ function App() {
       try {
         const next=await request<Snapshot>('/api/v1/snapshot',{signal:controller.signal});
         if(!controller.signal.aborted){
-          if(next.runtime!=='network-diagnostics-v5'){setLoadError('The API is an older build. Stop Neo, rebuild, restart the API and reload this page.');return;}
+          if(next.runtime!=='home-support-v6'){setLoadError('The API is an older build. Stop Neo, rebuild, restart the API and reload this page.');return;}
           setSnapshot(next);setLoadError('');
         }
       } catch {if(!controller.signal.aborted)setLoadError('The local API is unavailable. Displayed information may be out of date. Start the API, then retry.');}
@@ -111,7 +111,7 @@ function App() {
   }
   return <div className="shell">
     <header className="masthead"><div><div className="eyebrow">THE HOMELAB COMPANION</div><h1>neo<span>THC</span></h1><p>Network Environment Overview</p></div>
-      <div className="local-label"><span className="dot"/> Local network discovery<br/><strong>{snapshot?.runtime??'Connecting'}</strong></div></header>
+      <div className="local-label"><span className="dot"/> Local home tech support<br/><strong>{snapshot?.runtime??'Connecting'}</strong></div></header>
 
     <nav aria-label="Main navigation">{tabs.map((item)=><button key={item} className={tab===item?'selected':''} aria-current={tab===item?'page':undefined} onClick={()=>setTab(item)}>{item}</button>)}</nav>
     <main><div aria-live="polite">
@@ -121,7 +121,7 @@ function App() {
     </div>
     <Diagnostics active={tab==='Diagnostics'} selectedJobId={diagnosticSelection} jobs={diagnosticJobs} blockedReason={blockedReason} onUpdated={()=>setRefresh((value)=>value+1)} onCancel={(job)=>void cancel(job)}/>
     {(running||snapshot?.statsActive)&&<div className="notice" role="status">Collection is active. You can keep using this overview. <button onClick={()=>setTab('Activity')}>View activity</button>{running&&<button disabled={busy} onClick={()=>void cancel(running)}>Cancel collection</button>}</div>}
-    {tab==='NOC'&&<section className="panel"><div className="section-title"><div><h2>Network operations centre</h2><p>Observed systems, service evidence, collection availability and reported capacity</p></div><button className="primary" onClick={openDiscovery}>Add or rescan systems</button></div>
+    {tab==='NOC'&&<section className="panel"><div className="section-title"><div><h2>Network operations centre</h2><p>Observed systems, service evidence, collection availability and reported capacity</p></div><div className="actions"><button className="primary" onClick={()=>setTab('Diagnostics')}>Diagnose slow Internet or streaming</button><button onClick={openDiscovery}>Add or rescan systems</button></div></div>
       <div className="metric-grid"><div><span>Systems with responses</span><strong>{systems.filter((system)=>system.responded).length}</strong></div>
       <div><span>Advertised services</span><strong>{systems.reduce((sum,system)=>sum+system.services.filter((service)=>service.confidence==='advertised').length,0)}</strong></div>
       <div><span>Systems with metrics</span><strong>{systems.filter((system)=>snapshot?.stats?.some((stats)=>stats.assetId===system.currentAssetId&&(stats.cpuPercent!==null||stats.memory!==null))).length}</strong></div></div>
@@ -180,7 +180,7 @@ function App() {
     </section>}
     {tab==='Activity'&&<section><div className="section-title"><h2>Collection activity</h2><button onClick={openDiscovery}>New discovery</button></div>
       {diagnosticJobs.map((job)=><article className="panel" key={job.id}><div className="row"><h3>{job.spec.diagnostic?.hostname} · diagnosis</h3><Badge value={job.status}/></div>
-        <p>{time(job.createdAt)} · {job.spec.diagnostic?.kind==='dns'?'DNS resolution':'IPv4/IPv6 connection paths'}</p>
+        <p>{time(job.createdAt)} · {job.spec.diagnostic?.kind==='dns'?'DNS resolution':job.spec.diagnostic?.kind==='internet'?'Home Internet and streaming':'IPv4/IPv6 connection paths'}</p>
         <button onClick={()=>{setDiagnosticSelection(job.id);setTab('Diagnostics');}}>View diagnosis</button>{activeJob(job)&&<button disabled={busy} onClick={()=>void cancel(job)}>Cancel checks</button>}</article>)}
       {!jobs.length&&!diagnosticJobs.length&&<div className="panel">No collection jobs yet. Choose discovery or diagnosis to begin.</div>}
       <div className="job-list">{jobs.map((job)=><article className="panel" key={job.id}>
