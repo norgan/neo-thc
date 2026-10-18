@@ -8,6 +8,7 @@ import {Diagnostics} from './Diagnostics.js';
 import {Playback} from './Playback.js';
 import {Connection} from './Connection.js';
 import {applyTheme, initialTheme, saveTheme, type Theme} from './theme.js';
+import './theme.css';
 import './style.css';
 
 type Tab='NOC'|'Systems'|'Network'|'Diagnostics'|'Playback'|'System'|'Activity'|'Settings';

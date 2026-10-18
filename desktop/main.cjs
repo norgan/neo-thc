@@ -55,7 +55,7 @@ async function startBackend(config){
 }
 function openSetup(){
   if(setupWindow){setupWindow.focus();return;}
-  setupWindow=new BrowserWindow({width:650,height:760,backgroundColor:'#0f1014',parent:mainWindow,modal:!!mainWindow,show:!automated,webPreferences:{preload:path.join(__dirname,'connection-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  setupWindow=new BrowserWindow({width:650,height:760,backgroundColor:'#050b14',parent:mainWindow,modal:!!mainWindow,show:!automated,webPreferences:{preload:path.join(__dirname,'connection-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   lockWindow(setupWindow,url=>url===setupUrl);setupWindow.on('closed',()=>setupWindow=null);void setupWindow.loadURL(setupUrl);
 }
 ipcMain.handle('neo:connection-info',event=>{setupSender(event);return {mode:current.mode,origin:current.origin||'',canRemember:encryptedStorage(),caSelected:!!chosenCa};});
@@ -88,7 +88,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
     try{
       await fs.mkdir(app.getPath('userData'),{recursive:true});
       try{const saved=JSON.parse(await fs.readFile(profile(),'utf8'));if(saved.mode==='remote'&&saved.encryptedToken&&encryptedStorage()){current={mode:'remote',origin:saved.origin,token:safeStorage.decryptString(Buffer.from(saved.encryptedToken,'base64')),caPath:saved.caPath};chosenCa=saved.caPath||'';}}catch{}
-      mainWindow=new BrowserWindow({title:'NEO THC',width:1280,height:900,minWidth:800,minHeight:600,backgroundColor:'#0f1014',show:!automated,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+      mainWindow=new BrowserWindow({title:'NEO THC',width:1280,height:900,minWidth:800,minHeight:600,backgroundColor:'#050b14',show:!automated,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
       lockWindow(mainWindow,url=>{try{return new URL(url).origin==='http://127.0.0.1:4318';}catch{return false;}});
       Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'NEO THC',submenu:[{label:'Desktop connection…',click:openSetup},{label:'Browser companion folder',click:()=>void openCompanionFolder()},{type:'separator'},{role:'quit'}]},{label:'View',submenu:[{role:'reload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]}]));
       await startBackend(current);await mainWindow.loadURL('http://127.0.0.1:4318/');
