@@ -131,6 +131,9 @@ test('method issues remain visible and API interruption retries without starting
 
 test('navigation, keyboard and link-wide controls remain accessible without placeholder screens',async({page})=>{
   await options(page);await page.goto('/');
+  await page.keyboard.press('Tab');await expect(page.getByRole('button',{name:'Switch to light mode',exact:true})).toBeFocused();
+  await page.keyboard.press('Enter');await expect(page.locator('html')).toHaveAttribute('data-theme','light');await expect(page.getByRole('button',{name:'Switch to dark mode',exact:true})).toBeFocused();
+  await page.keyboard.press('Enter');await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
   await page.keyboard.press('Tab');await expect(nav(page,'NOC')).toBeFocused();
   await page.keyboard.press('Tab');await page.keyboard.press('Enter');await expect(nav(page,'Systems')).toHaveAttribute('aria-current','page');
   await expect(page.getByRole('navigation').getByRole('button')).toHaveCount(8);
