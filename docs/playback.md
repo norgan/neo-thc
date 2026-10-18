@@ -4,6 +4,8 @@ Runtime **playback-desktop-v7** adds user-started capture from the video actuall
 
 The self-contained sampler runs in the isolated scripting world on the selected YouTube/Netflix top-level tab. It chooses the visible playing video before paused elements and uses a 20-second default sample. It can be stopped, removes its listeners/observer, and ends on hidden tab, ended video or detached player. It never changes playback settings. A service worker retains the minimized result in session storage, so closing the popup does not lose a running capture. A stale interrupted capture can be restarted.
 
+Desktop Settings → Open browser companion folder prepares a persistent, versioned copy under the desktop's user-data folder. It survives portable-executable extraction cleanup and app updates; existing versioned files are not overwritten. Browser installation remains an explicit owner action. The separately downloaded ZIP can instead be extracted into any persistent folder the owner chooses.
+
 ## Measurements and interpretation
 
 - `videoWidth`/`videoHeight`: decoded video dimensions, including changes over the sample. This does not attest HDR, display resolution, account-plan limits, advertisements or selected quality settings.

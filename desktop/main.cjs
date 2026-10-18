@@ -1,5 +1,6 @@
 const {app,BrowserWindow,Menu,ipcMain,utilityProcess,dialog,safeStorage,shell}=require('electron');
 const fs=require('node:fs/promises');
+const {constants}=require('node:fs');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const root=path.join(__dirname,'..');
@@ -11,6 +12,16 @@ if(smokeFile)app.disableHardwareAcceleration();
 if(process.env.NEO_DESKTOP_USER_DATA)app.setPath('userData',path.resolve(process.env.NEO_DESKTOP_USER_DATA));
 const profile=()=>path.join(app.getPath('userData'),'connection.json');
 const database=()=>path.join(app.getPath('userData'),'neo.sqlite');
+async function openCompanionFolder(){
+  // A portable executable extracts into a temporary directory. Browser extensions
+  // must be installed from a persistent, versioned copy that survives app shutdown.
+  const folder=path.join(app.getPath('userData'),'browser-companion-'+app.getVersion());
+  await fs.mkdir(folder,{recursive:true});
+  for(const name of ['manifest.json','background.js','sampler.js','popup.html','popup.js','popup.css']){
+    try{await fs.copyFile(path.join(root,'browser-companion',name),path.join(folder,name),constants.COPYFILE_EXCL);}catch(error){if(error.code!=='EEXIST')throw error;}
+  }
+  return shell.openPath(folder);
+}
 function encryptedStorage(){return safeStorage.isEncryptionAvailable()&&(process.platform!=='linux'||safeStorage.getSelectedStorageBackend()!=='basic_text');}
 function setupSender(event){if(!setupWindow||event.sender!==setupWindow.webContents||event.senderFrame!==setupWindow.webContents.mainFrame||event.senderFrame.url!==setupUrl)throw new Error('Unrecognized setup window');}
 function lockWindow(win,allowed){
@@ -69,7 +80,7 @@ ipcMain.handle('neo:connect',async(event,input)=>{
   }catch(error){return {error:error.message||'Connection could not be changed.'};}finally{switching=false;}
 });
 ipcMain.handle('neo:open-connection',event=>{if(event.sender!==mainWindow?.webContents||event.senderFrame!==mainWindow.webContents.mainFrame||new URL(event.senderFrame.url).origin!=='http://127.0.0.1:4318')throw new Error('Unrecognized desktop window');openSetup();});
-ipcMain.handle('neo:open-companion',async event=>{if(event.sender!==mainWindow?.webContents||event.senderFrame!==mainWindow.webContents.mainFrame)throw new Error('Unrecognized desktop window');return shell.openPath(path.join(root,'browser-companion'));});
+ipcMain.handle('neo:open-companion',async event=>{if(event.sender!==mainWindow?.webContents||event.senderFrame!==mainWindow.webContents.mainFrame)throw new Error('Unrecognized desktop window');return openCompanionFolder();});
 if(!app.requestSingleInstanceLock())app.quit();else{
   app.on('second-instance',()=>{mainWindow?.show();mainWindow?.focus();});
   app.whenReady().then(async()=>{
@@ -78,7 +89,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
       try{const saved=JSON.parse(await fs.readFile(profile(),'utf8'));if(saved.mode==='remote'&&saved.encryptedToken&&encryptedStorage()){current={mode:'remote',origin:saved.origin,token:safeStorage.decryptString(Buffer.from(saved.encryptedToken,'base64')),caPath:saved.caPath};chosenCa=saved.caPath||'';}}catch{}
       mainWindow=new BrowserWindow({title:'NEO THC',width:1280,height:900,minWidth:800,minHeight:600,show:!automated,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
       lockWindow(mainWindow,url=>{try{return new URL(url).origin==='http://127.0.0.1:4318';}catch{return false;}});
-      Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'NEO THC',submenu:[{label:'Desktop connection…',click:openSetup},{label:'Browser companion folder',click:()=>void shell.openPath(path.join(root,'browser-companion'))},{type:'separator'},{role:'quit'}]},{label:'View',submenu:[{role:'reload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]}]));
+      Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'NEO THC',submenu:[{label:'Desktop connection…',click:openSetup},{label:'Browser companion folder',click:()=>void openCompanionFolder()},{type:'separator'},{role:'quit'}]},{label:'View',submenu:[{role:'reload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]}]));
       await startBackend(current);await mainWindow.loadURL('http://127.0.0.1:4318/');
       if(smokeFile){
         let rendered=false;for(let attempt=0;attempt<20&&!rendered;attempt++){rendered=await mainWindow.webContents.executeJavaScript('!!document.querySelector("h1") && document.body.textContent.includes("playback-desktop-v7")');if(!rendered)await new Promise(resolve=>setTimeout(resolve,100));}
