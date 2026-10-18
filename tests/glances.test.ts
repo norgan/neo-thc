@@ -14,6 +14,7 @@ import {createApp} from '../server/app.js';
 import {parseDiscovery} from '../server/discovery-scope.js';
 import {discoveryObservation} from '../server/discovery-runner.js';
 import {Store} from '../server/store.js';
+import {connectionCheck} from '../server/diagnostic-network.mjs';
 import type {Job,DiscoveryInterface} from '../shared/types.js';
 const sample:Record<string,unknown>={
   '/api/4/version':'4.5.8','/api/4/system':{hostname:'server.example',os_name:'Example OS',os_version:'1',secret:'drop'},
@@ -197,6 +198,8 @@ test('HTTPS rejects an untrusted certificate without sending application request
       await assert.rejects(glancesRequest({assetId:'tls-test',requestId:'tls-test-request',scheme:'https',address:'127.0.0.1',sourceAddress:'127.0.0.1',port:address.port},
         '/api/4/version',new AbortController().signal),(error:unknown)=>error instanceof GlancesError&&error.code==='tls_validation_failed');
       assert.equal(requests,0);
+      const diagnosis=await connectionCheck('cloud.example','127.0.0.1',address.port,true);
+      assert.equal(diagnosis.tcp,'connected');assert.equal(diagnosis.tls,'certificate_error');assert.equal(requests,0);
     } finally {server.closeAllConnections();await new Promise<void>((resolve)=>server.close(()=>resolve()));}
   } finally {await rm(dir,{recursive:true,force:true});}
 });

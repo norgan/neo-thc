@@ -83,6 +83,24 @@ try {
         if(message.type==='done'){clearTimeout(timer);try{assert.deepEqual(message.failures,[]);assert.equal(message.outcomes[0].responses,1);resolve();}catch(error){reject(error);}}
       });
     });
+    const diagnostic=new Worker(new URL('../dist/server/server/diagnostic-worker.mjs',import.meta.url),{
+      workerData:{v:1,attemptId:randomUUID(),plan:{kind:'connect',hostname:'compiled.example',dnsJobId:'isolated-smoke',addresses:['127.0.0.1'],port:listenAddress.port,tls:false}},
+      execArgv:[],env:{},stdout:true,stderr:true,
+    });
+    diagnostic.stdout.resume();diagnostic.stderr.resume();
+    try{
+      await new Promise((resolve,reject)=>{
+        let result;
+        const timer=setTimeout(()=>reject(new Error('Compiled diagnostic worker deadline')),5000);
+        diagnostic.once('error',(error)=>{clearTimeout(timer);reject(error);});
+        diagnostic.on('message',(raw)=>{
+          const message=JSON.parse(raw);
+          if(message.type==='result')result=message.result;
+          if(message.type==='done'){clearTimeout(timer);try{assert.equal(message.count,1);assert.equal(result.tcp,'connected');assert.equal(result.tls,'not_requested');resolve();}catch(error){reject(error);}}
+        });
+      });
+      console.log('PASS: actual compiled diagnostic worker, isolated loopback TCP, no application payload');
+    }finally{await diagnostic.terminate();}
   } finally {await worker.terminate();await new Promise((resolve)=>listener.close(resolve));}
   assert.equal(batches.length,1);assert.equal(batches[0].ports[0].state,'open');
   // Actual compiled read-only HTTP transport, isolated loopback endpoint and synthetic payload only.
@@ -118,7 +136,7 @@ try {
     try {
       const response = await api('/api/v1/health');
       const health = await response.json();
-      return health.status === 'ok' && health.synthetic === false && health.runtime === 'network-overview-v4';
+      return health.status === 'ok' && health.synthetic === false && health.runtime === 'network-diagnostics-v5';
     } catch { return false; }
   }, 10_000, 'Compiled server never became ready');
 
@@ -144,7 +162,7 @@ try {
   assert.equal(inventory.assets[0].latest.services[0].note.includes('open'),true);
   const snapshot=await (await api('/api/v1/snapshot')).json();
   assert.equal(snapshot.systems.length,1);assert.equal(snapshot.systems[0].responded,true);
-  assert.equal(snapshot.runtime,'network-overview-v4');assert.deepEqual(snapshot.targets,[]);
+  assert.equal(snapshot.runtime,'network-diagnostics-v5');assert.deepEqual(snapshot.targets,[]);
   const removed=await fetch(base+'/api/v1/jobs',{method:'POST',headers:{'Content-Type':'application/json','X-Neo-Client':'local-ui'},
     body:JSON.stringify({requestId:'no-runtime-fixture',mode:'initial',scope:['fixture:nas']}),signal:AbortSignal.timeout(1000)});
   assert.equal(removed.status,404);

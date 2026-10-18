@@ -4,10 +4,11 @@ import type { Asset, Job, Observation, Snapshot, SystemView, GlancesStats } from
 import { systemViews } from '../shared/inventory.js';
 import { SystemStats } from './SystemStats.js';
 import { Discovery } from './Discovery.js';
+import {Diagnostics} from './Diagnostics.js';
 import './style.css';
 
-type Tab='NOC'|'Systems'|'Network'|'System'|'Activity'|'Settings';
-const tabs:Tab[]=['NOC','Systems','Network','System','Activity','Settings'];
+type Tab='NOC'|'Systems'|'Network'|'Diagnostics'|'System'|'Activity'|'Settings';
+const tabs:Tab[]=['NOC','Systems','Network','Diagnostics','System','Activity','Settings'];
 const activeJob=(job:Job)=>job.status==='queued'||job.status==='running';
 const issueText:Record<string,string>={
   access_denied:'The operating system denied this method. Review local security/firewall policy; Neo did not change it.',
@@ -57,6 +58,7 @@ function App() {
   const [detailError,setDetailError]=useState('');
   const [refresh,setRefresh]=useState(0);
   const [showAttempts,setShowAttempts]=useState(false),[search,setSearch]=useState('');
+  const [diagnosticSelection,setDiagnosticSelection]=useState('');
   const [discoveryOpen,setDiscoveryOpen]=useState(location.hash==='#discovery'),[consentRevision,setConsentRevision]=useState(0);
   const dialog=useRef<HTMLDialogElement|null>(null),opener=useRef<HTMLElement|null>(null);
   function openDiscovery(){opener.current=document.activeElement as HTMLElement;history.pushState({neoDiscovery:true},'','#discovery');setDiscoveryOpen(true);}
@@ -70,7 +72,7 @@ function App() {
       try {
         const next=await request<Snapshot>('/api/v1/snapshot',{signal:controller.signal});
         if(!controller.signal.aborted){
-          if(next.runtime!=='network-overview-v4'){setLoadError('The API is an older build. Stop Neo, rebuild, restart the API and reload this page.');return;}
+          if(next.runtime!=='network-diagnostics-v5'){setLoadError('The API is an older build. Stop Neo, rebuild, restart the API and reload this page.');return;}
           setSnapshot(next);setLoadError('');
         }
       } catch {if(!controller.signal.aborted)setLoadError('The local API is unavailable. Displayed information may be out of date. Start the API, then retry.');}
@@ -84,7 +86,8 @@ function App() {
   const selectedAssetId=selectedSystem?.currentAssetId;
   const visibleSystems=systems.filter((system)=>(showAttempts||system.responded)&&(!search||[system.displayName,system.address,...system.services.map((service)=>service.name),...system.roles.map((role)=>role.label)].join(' ').toLowerCase().includes(search.toLowerCase())));
   const jobs=(snapshot?.jobs??[]).filter((job)=>job.synthetic!==true&&!!job.spec.discovery);
-  const running=jobs.find(activeJob);
+  const diagnosticJobs=(snapshot?.jobs??[]).filter((job)=>job.synthetic===false&&!!job.spec.diagnostic);
+  const running=[...jobs,...diagnosticJobs].find(activeJob);
   const evidenceId=assets.find((asset)=>asset.id===selectedAssetId)?.latest?.id;
   useEffect(()=>{
     setDetail(null);setDetailError('');
@@ -99,7 +102,7 @@ function App() {
   const currentAsset=assets.find((asset)=>asset.id===selectedAssetId)??detail?.asset;
   const choose=(system:SystemView)=>{setSelected(system.key);setTab('System');};
   const blockedReason=!snapshot?(loadError||'Waiting for the local API.'):loadError?'Reconnect to the local API before starting discovery.'
-    :snapshot.collectionError?snapshot.collectionError:snapshot.statsActive?'A system stats read is active. Finish or cancel it before discovery.':running?'A discovery job is active. Open Activity to review progress or cancel it.':busy?'Finishing the current action.':'';
+    :snapshot.collectionError?snapshot.collectionError:snapshot.statsActive?'A system stats read is active. Finish or cancel it before new collection.':running?'A collection job is active. Open Activity to review progress or cancel it.':busy?'Finishing the current action.':'';
   async function cancel(job:Job) {
     if(busy)return;setBusy(true);setActionError('');
     try {await request('/api/v1/jobs/'+encodeURIComponent(job.id)+'/cancel',{method:'POST',body:'{}'});setRefresh((value)=>value+1);}
@@ -116,6 +119,7 @@ function App() {
       {actionError&&<div className="error">{actionError}</div>}
       {snapshot?.collectionError&&<div className="error">{snapshot.collectionError}</div>}
     </div>
+    <Diagnostics active={tab==='Diagnostics'} selectedJobId={diagnosticSelection} jobs={diagnosticJobs} blockedReason={blockedReason} onUpdated={()=>setRefresh((value)=>value+1)} onCancel={(job)=>void cancel(job)}/>
     {(running||snapshot?.statsActive)&&<div className="notice" role="status">Collection is active. You can keep using this overview. <button onClick={()=>setTab('Activity')}>View activity</button>{running&&<button disabled={busy} onClick={()=>void cancel(running)}>Cancel collection</button>}</div>}
     {tab==='NOC'&&<section className="panel"><div className="section-title"><div><h2>Network operations centre</h2><p>Observed systems, service evidence, collection availability and reported capacity</p></div><button className="primary" onClick={openDiscovery}>Add or rescan systems</button></div>
       <div className="metric-grid"><div><span>Systems with responses</span><strong>{systems.filter((system)=>system.responded).length}</strong></div>
@@ -175,7 +179,10 @@ function App() {
       </details>}
     </section>}
     {tab==='Activity'&&<section><div className="section-title"><h2>Collection activity</h2><button onClick={openDiscovery}>New discovery</button></div>
-      {!jobs.length&&<div className="panel">No discovery jobs yet. Choose and confirm a scope to begin.</div>}
+      {diagnosticJobs.map((job)=><article className="panel" key={job.id}><div className="row"><h3>{job.spec.diagnostic?.hostname} · diagnosis</h3><Badge value={job.status}/></div>
+        <p>{time(job.createdAt)} · {job.spec.diagnostic?.kind==='dns'?'DNS resolution':'IPv4/IPv6 connection paths'}</p>
+        <button onClick={()=>{setDiagnosticSelection(job.id);setTab('Diagnostics');}}>View diagnosis</button>{activeJob(job)&&<button disabled={busy} onClick={()=>void cancel(job)}>Cancel checks</button>}</article>)}
+      {!jobs.length&&!diagnosticJobs.length&&<div className="panel">No collection jobs yet. Choose discovery or diagnosis to begin.</div>}
       <div className="job-list">{jobs.map((job)=><article className="panel" key={job.id}>
         <div className="row"><h3>Approved IPv4 discovery</h3><Badge value={job.status}/></div>
         <p className="muted">{time(job.createdAt)} · {job.spec.discovery!.cidr} · source {job.spec.discovery!.interface.address}</p>
@@ -200,7 +207,7 @@ function App() {
     <dialog ref={dialog} className="discovery-dialog" aria-labelledby="discovery-dialog-title" onCancel={(event)=>{event.preventDefault();closeDiscovery();}} onClick={(event)=>{if(event.target!==event.currentTarget)return;const bounds=event.currentTarget.getBoundingClientRect();if(event.clientX<bounds.left||event.clientX>bounds.right||event.clientY<bounds.top||event.clientY>bounds.bottom)closeDiscovery();}}>
       <div className="section-title"><h2 id="discovery-dialog-title">Add or rescan systems</h2><button autoFocus onClick={closeDiscovery}>Close discovery</button></div>
       <p>Closing this dialog preserves your edits and any running job. Approval must be reviewed again after reopening.</p>
-      {running&&<p role="status">A discovery job is active. <button onClick={()=>{closeDiscovery();setTab('Activity');}}>View activity</button></p>}
+      {running&&<p role="status">A collection job is active. <button onClick={()=>{closeDiscovery();setTab('Activity');}}>View activity</button></p>}
       <Discovery disabled={!!blockedReason} blockedReason={blockedReason} resetConsentKey={consentRevision} onStarted={()=>{setRefresh((value)=>value+1);closeDiscovery();setTab('Activity');}}/>
     </dialog><footer>Neo · Network Environment Overview <span>THC · The Homelab Companion</span></footer>
   </div>;

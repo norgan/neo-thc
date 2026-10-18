@@ -1,4 +1,12 @@
-# Current verification: network-overview-v4
+# DNS/IPv6 diagnostic extension — 18 October 2026
+
+The network-diagnostics-v5 extension adds [a targeted DNS/connection workbench](diagnostics.md), with scoped A/AAAA and optional OS lookup, separately approved IPv4/IPv6 TCP/TLS, saved timing/outcomes, explicit uncertainty, cancellation and restart recovery. It reuses schema-v2 job storage. Personal live results remain outside the repository.
+
+New unit tests exercise strict scope/consent, saved-address binding, IPv6 configuration, resolver/OS/transport distinctions, partial conclusions, redaction, idempotency, shared capacity, cancellation, forged/late messages, restart recovery and actual isolated DNS/IPv4/IPv6/TLS. Eight new desktop/mobile cases exercise the visible flow. Existing discovery navigation expectations now include Diagnostics and the shared collection lock. Production smoke adds an actual compiled diagnostic TCP worker on loopback.
+
+Read [current PR checks](https://github.com/norgan/neo-thc/pull/1/checks) for the exact published head. The records below describe the previously verified overview/shutdown milestone.
+
+# Previous verification: network-overview-v4
 
 Continuation on 14 October 2026, starting from PR #1 head ecb6f17. That head's [run 38350707373](https://github.com/norgan/neo-thc/actions/runs/38350707373) passed typechecks, 72 unit tests, build and compiled loopback smoke, but failed two desktop browser teardowns because the server required SIGKILL. Its PR description still cited an older passing head.
 

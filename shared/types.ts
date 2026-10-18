@@ -48,6 +48,7 @@ export interface JobSpec {
   maxCycles: number;
   maxDurationMs: number;
   discovery?: DiscoveryPlan;
+  diagnostic?: DiagnosticPlan;
 }
 export type JobStatus =
   | 'queued' | 'running' | 'completed' | 'cancelled'
@@ -69,6 +70,7 @@ export interface Job {
   discoveryProgress?: DiscoveryProgress;
   discoveryOutcomes?: DiscoveryOutcome[];
   glancesEnrichment?: GlancesEnrichment;
+  diagnosticReport?: DiagnosticReport;
 }
 export interface FixtureTarget {
   key: string;
@@ -154,4 +156,24 @@ export interface GlancesEnrichment {
   phase:'resolving'|'reading'|'completed'|'cancelled';
   datagramsSent:number; packetsReceived:number; omitted:number; issues:string[];
   endpoints:(GlancesCandidate&{status:'pending'|'reading'|'complete'|'partial'|'failed'|'skipped';snapshotId?:string;reason?:string})[];
+}
+
+export type DiagnosticPlan =
+  | {kind:'dns';hostname:string;resolvers:string[];systemLookup:boolean}
+  | {kind:'connect';hostname:string;dnsJobId:string;addresses:string[];port:number;tls:boolean};
+export type DnsOutcome='answer'|'no_data'|'nxdomain'|'not_found'|'servfail'|'refused'|'timeout'|'cancelled'|'unavailable'|'response_cap';
+export type TcpOutcome='connected'|'refused'|'timeout'|'unreachable'|'unavailable';
+export type TlsOutcome='verified'|'certificate_error'|'handshake_error'|'timeout'|'not_requested'|'not_reached';
+export interface DnsCheck {
+  kind:'dns';source:string;recordType:'A'|'AAAA'|'system';status:DnsOutcome;durationMs:number;
+  answers:{address:string;family:4|6;ttl:number|null}[];
+}
+export interface ConnectionCheck {
+  kind:'connect';address:string;family:4|6;port:number;sourceAddress:string|null;tcp:TcpOutcome;tls:TlsOutcome;durationMs:number;
+}
+export interface DiagnosticFinding {code:string;title:string;detail:string;nextStep:string;}
+export interface DiagnosticReport {
+  complete:boolean;
+  hostname:string;kind:'dns'|'connect';vantage:string;startedAt:number;updatedAt:number;
+  dns:DnsCheck[];connections:ConnectionCheck[];findings:DiagnosticFinding[];
 }

@@ -92,6 +92,10 @@ Before enabling remote interface or control functionality, decide and document e
 
 An opt-in initial IPv4 discovery slice now has source for explicit interface/CIDR selection, PTR through a selected on-link resolver, bounded TCP connect probes, mDNS service-type multicast, SSDP root-device multicast and a limited legacy browse-master broadcast. It does not implement ping/ARP, general UDP scanning, IPv6 or real platform API connections. [Discovery documentation](discovery.md) specifies exact traffic, scope, evidence and validation limits. Source presence is not proof of physical network compatibility.
 
-## Verification status
+## DNS and connection diagnosis milestone — 18 October 2026
+
+Diagnostics implements selected-resolver A/AAAA timing/outcome checks, optional OS resolution comparison, saved reports and separately approved exact-address IPv4/IPv6 TCP/TLS checks. It presents uncertainty and next steps, shares existing job/cancel/storage controls and changes no network settings. This is a bounded diagnostic slice, not full IPv6 inventory discovery, continuous monitoring, advanced DNS setup or a browser/video trace. See [diagnostics](diagnostics.md) and current PR checks.
+
+## Historical fixture verification
 
 The full-product acceptance checks above remain planned. The local fixture foundation passed 27 unit tests, 12 desktop/mobile Chromium cases, typechecks, build and compiled-worker startup smoke at [source head 60c860e](https://github.com/norgan/neo-thc/actions/runs/38334947206). Those tests do not validate real integrations, agents or split deployment. Documentation publication is separate from deployment.

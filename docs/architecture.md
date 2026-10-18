@@ -1,6 +1,8 @@
 ## Current runtime correction
 
-The production app is real-only (network-overview-v4): NOC/Systems/Network/System/Activity/Settings, with discovery in a secondary modal and no fixture collection route. Optional existing Glances enrichment is part of the reviewed discovery job only when explicitly enabled. Synthetic legacy database rows are retained but excluded before evidence projection, ambiguity summaries and capacity checks. Tests inject fixtures from tests/support; production build excludes that directory. Interface/CIDR/DNS defaults come from bounded local configuration reads, never network queries. Method diagnostics are host-validated and partial completion remains explicit.
+The production app is real-only (network-diagnostics-v5): NOC/Systems/Network/Diagnostics/System/Activity/Settings, with discovery in a secondary modal and no fixture collection route. Optional existing Glances enrichment is part of the reviewed discovery job only when explicitly enabled. Synthetic legacy database rows are retained but excluded before evidence projection, ambiguity summaries and capacity checks. Tests inject fixtures from tests/support; production build excludes that directory. Interface/CIDR/DNS defaults come from bounded local configuration reads, never network queries. Method diagnostics are host-validated and partial completion remains explicit.
+
+The [DNS/connection workbench](diagnostics.md) uses a fixed diagnostic worker, two-phase approval and the shared job manager. Its reports stay in existing job JSON (schema v2), preserving partial results and interruption recovery without creating inventory assets. Source modules are diagnostic-options.ts (bounded local configuration), diagnostics.ts (scope/worker validation), diagnostic-network.mjs (DNS/OS/TCP/TLS), diagnostic-worker.mjs, shared/diagnostics.ts (evidence-based findings) and web/Diagnostics.tsx. No network setting is changed.
 
 # Foundation architecture and collector extension
 

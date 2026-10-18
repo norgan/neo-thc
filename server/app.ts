@@ -11,17 +11,19 @@ import { systemViews } from '../shared/inventory.js';
 import { GLANCES_PATHS, resolveGlancesTarget, readGlances, glancesRequest } from './glances.js';
 import {GlancesEnricher,createGlancesWorker} from './glances-enrichment.js';
 import { Store } from './store.js';
+import {DiagnosticRunner,parseDiagnostic,type createDiagnosticWorker} from './diagnostics.js';
+import {diagnosticOptions} from './diagnostic-options.js';
 
 const allowedHosts = new Set(['127.0.0.1:4318', 'localhost:4318', '127.0.0.1:5173', 'localhost:5173']);
 const allowedOrigins = new Set([...allowedHosts].map((host) => 'http://' + host));
 
-export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker } = {}) {
+export function createApp(options: { dbPath?: string; webRoot?: string; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker; diagnosticWorkerFactory?:typeof createDiagnosticWorker } = {}) {
   const store = new Store(options.dbPath, options.testSupport !== true);
   const discovery = options.discoveryAdapter ?? new DiscoveryCollector();
   const adapter = options.testSupport ? options.adapter ?? discovery : discovery;
   const interfaces = options.discoveryInterfaces ?? localInterfaces;
   const enrichment = new GlancesEnricher(store,interfaces,options.glancesWorkerFactory,options.glancesRead);
-  const jobs = new JobManager(store, adapter, options.probeTimeoutMs, discovery,enrichment);
+  const jobs = new JobManager(store, adapter, options.probeTimeoutMs, discovery,enrichment,new DiagnosticRunner(options.diagnosticWorkerFactory));
   let statsActive: {requestId:string;controller:AbortController;done:Promise<unknown>}|null=null;
   let statsProblem:string|null=null;
   const collectionProblem=()=>jobs.problem??statsProblem;
@@ -52,9 +54,9 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'Not found' }));
 
   const isSynthetic = () => !store.jobs().some((job) => !!job.spec.discovery) && store.assets().every((asset) => asset.latest?.synthetic !== false);
-  app.get('/api/v1/health', async () => ({ status: collectionProblem() ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'network-overview-v4', collector: 'explicit-scope-discovery', collectionError: collectionProblem() }));
+  app.get('/api/v1/health', async () => ({ status: collectionProblem() ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'network-diagnostics-v5', collector: 'explicit-scope-discovery', collectionError: collectionProblem() }));
   app.get('/api/v1/snapshot', async () => ({
-    runtime: 'network-overview-v4', synthetic: options.testSupport ? isSynthetic() : false,
+    runtime: 'network-diagnostics-v5', synthetic: options.testSupport ? isSynthetic() : false,
     collectionError: collectionProblem(), assets: store.assets(), systems:systemViews(store.assets()), stats:store.stats(), statsActive:statsActive?.requestId??null, jobs: store.jobs(), targets: options.testSupport ? adapter.targets : [],
   }));
   app.get('/api/v1/assets', async () => ({ synthetic: options.testSupport ? isSynthetic() : false, assets: store.assets() }));
@@ -95,6 +97,17 @@ export function createApp(options: { dbPath?: string; webRoot?: string; adapter?
     const prior = store.jobByRequest(requestId);
     const job = jobs.start(requestId, spec);
     return reply.code(prior ? 200 : 202).send({ job });
+  });
+
+  app.get('/api/v1/diagnostics/options',async()=>diagnosticOptions());
+  app.post('/api/v1/diagnostics/preview',async(request)=>{
+    const {plan}=parseDiagnostic(request.body,store);
+    return {plan,maxDurationMs:12000,operations:plan.kind==='dns'?plan.resolvers.length*2+(plan.systemLookup?1:0):plan.addresses.length};
+  });
+  app.post('/api/v1/diagnostics/jobs',async(request,reply)=>{
+    if(statsActive||statsProblem)throw new RequestError(409,'A stats read is active or unavailable. Finish it before diagnostics.');
+    const {requestId,spec}=parseDiagnostic(request.body,store,true),prior=store.jobByRequest(requestId);
+    return reply.code(prior?200:202).send({job:jobs.start(requestId,spec)});
   });
 
   app.post<{Params:{id:string}}>('/api/v1/assets/:id/glances/preview',async(request)=>{

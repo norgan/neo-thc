@@ -6,7 +6,9 @@ export const MAX_OBSERVATIONS = 10_000;
 export const MAX_JOBS = 200;
 const realEvidence = "json_type(payload, '$.synthetic') = 'false' AND json_extract(payload, '$.source') = 'discovery-v1'";
 export const isRealObservation = (value: ObservationInput): boolean => value.synthetic === false && value.source === 'discovery-v1';
-export const isRealJob = (job: Job): boolean => job.synthetic !== true && !!job.spec.discovery && job.spec.scope.length === 1 && job.spec.scope[0] === 'discovery:ipv4';
+export const isRealJob = (job: Job): boolean => job.spec.scope.length === 1 && (
+  job.synthetic !== true && !!job.spec.discovery && job.spec.scope[0] === 'discovery:ipv4' ||
+  job.synthetic === false && !!job.spec.diagnostic && job.spec.scope[0] === 'diagnostics:connectivity');
 
 /** Synchronous SQLite is deliberately bounded to this local single-process collector. */
 export class Store {

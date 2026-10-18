@@ -1,4 +1,8 @@
-# Current browser suite: network-overview-v4
+# Current browser suite: network-diagnostics-v5
+
+The suite now has 18 cases in each of the two Chromium viewports (36 total), adding DNS preview/consent and visible IPv6 configuration, exact-address IPv4/IPv6 path comparison with next steps, slow resolver/TTL/history interpretation, and partial cancellation/stale-API locking. Data is controlled, and no browser test submits public/LAN diagnostics. Read [current PR checks](https://github.com/norgan/neo-thc/pull/1/checks) for exact-head evidence.
+
+## Previous network-overview-v4 evidence
 
 The current suite has 14 cases in each of two Chromium viewports: 1440×1000 desktop and 375×812 mobile emulation. **All 28 passed locally on Windows on 14 October 2026 (1.3 minutes).** The run used the production build, Node 24.19.0, Playwright 1.64.0 and its pinned Chromium 156.0.8078.4. No physical-device or cross-browser claim follows from viewport emulation.
 

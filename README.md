@@ -16,7 +16,7 @@ npm.cmd run build
 npm.cmd start
 ```
 
-Open **http://127.0.0.1:4318**. The header should show **network-overview-v4**. If you see an older interface, stop the old server, rebuild, restart and reload. A new frontend detects an older API and explains the mismatch.
+Open **http://127.0.0.1:4318**. The header should show **network-diagnostics-v5**. If you see an older interface, stop the old server, rebuild, restart and reload. A new frontend detects an older API and explains the mismatch.
 
 On macOS/Linux, use npm instead of npm.cmd. Node 24 unit tests, typechecks and build are also checked locally on Windows during this continuation. The standalone process-group smoke harness targets Linux; physical network and Glances compatibility require separate verification.
 
@@ -36,6 +36,12 @@ Methods: numeric IPv4 TCP connect probes; reverse DNS/PTR; mDNS service-type mul
 At most 256 IPv4 addresses, 64 selected ports and 16,384 TCP attempts. Reviewable concurrency choices are 8, 16 or 32; whole-job deadlines are 1, 2, 4 or 8 minutes, with four minutes selected initially. TCP starts are paced to at most 100 per second. Multicast/broadcast and automatic Glances resolution require separate full-subnet approval on an unambiguous /24–/30 interface. The whole link receives those queries. See [exact protocol scope and limits](docs/discovery.md).
 
 A run may finish **completed with issues** when individual methods encounter a denied socket, unavailable source, DNS timeout/refusal or receive cap. Saved evidence remains available. Expected TCP refusal/timeout, DNS no-data and silent advertisements are inconclusive outcomes, not proof of failure or absence. Older jobs retain their existing generic errors because discarded method diagnostics cannot be reconstructed.
+
+## Diagnose slow DNS or IPv4/IPv6 connections
+
+Open **Diagnostics**, enter the hostname and review checks through the configured DNS servers. Neo records A/AAAA answers, TTLs, latency and distinct errors; optional OS resolution is labelled separately. Then select exact returned IPv4/IPv6 addresses to compare TCP and certificate-verified TLS on one service port. Every phase requires review and approval; no returned address is contacted automatically.
+
+Saved diagnoses show partial results, timings, findings and a clear next step. Repeat during an intermittent stall and compare recent timing. Diagnosis changes no network settings and does not prove browser/video-streaming behavior. See [DNS and connection diagnosis](docs/diagnostics.md) for scope and interpretation. The inventory scanner remains IPv4-only; targeted IPv6 DNS and connection checks are implemented separately.
 
 ## Safety and data
 
@@ -66,7 +72,7 @@ Agentless first. An optional endpoint agent is only for capabilities unavailable
 Real Proxmox and other credentialed platform adapters, dependency graphs, advanced DNS diagnostics, recommendations and remote deployment remain planned. No merge or deployment is implied.
 
 
-## Systems and real stats (network-overview-v4)
+## Systems and real stats (network-diagnostics-v5)
 
 The NOC and Systems views show friendly PTR names, advertised services and evidence-supported role suggestions. Search names/services/roles; enable “Show all address attempts” for silent or DNS-only candidates. The Network view separates scanned scopes, unclassified infrastructure candidates and delivered-service evidence. Address/interface grouping is presentation only: original job-scoped identities, observations and past names stay separate. Only the newest address observation supplies current name and service suggestions.
 
