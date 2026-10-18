@@ -1,0 +1,104 @@
+name: Foundation checks
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Node 24 typecheck, tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Show runtime versions
+        run: node --version && npm --version
+      - name: Install dependencies
+        run: npm ci --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test runtime, lifecycle and isolated transports
+        run: npm test
+      - name: Build API and browser app
+        run: npm run build
+      - name: Smoke test real-only startup and loopback discovery
+        run: npm run smoke
+      - name: Preserve tested dependency lockfile
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: generated-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Install pinned Chromium browser
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Test desktop and mobile browser flows
+        run: npm run test:browser
+      - name: Preserve browser report and screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-qa
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 3
+
+  desktop:
+    name: Windows desktop packaging and owned runtime
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci --no-fund
+      - run: npm run build
+      - name: Package Windows app
+        run: npm run package:desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Exercise actual packaged desktop and shutdown
+        run: node scripts/desktop-smoke.mjs
+        env:
+          NEO_DESKTOP_PROOF_DIR: desktop-proof
+      - name: Exercise desktop connection UI and verified TLS mode switching
+        shell: pwsh
+        run: |
+          $env:PATH = 'C:\Program Files\Git\usr\bin;' + $env:PATH
+          node scripts/desktop-integration.mjs
+        env:
+          NEO_DESKTOP_PROOF_DIR: desktop-proof
+      - run: npm run package:service
+      - name: Preserve installable apps, server bundle and proof
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-and-server
+          path: |
+            release/*.exe
+            release/*server.zip
+            desktop-proof/
+          if-no-files-found: warn
+          retention-days: 7

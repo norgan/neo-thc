@@ -1,0 +1,7 @@
+import {useEffect,useState} from 'react';
+declare global {interface Window {neoDesktop?:{connection:()=>Promise<void>;companion:()=>Promise<string>}}}
+export function Connection({settings=false}:{settings?:boolean}){
+  const [placement,setPlacement]=useState<{mode:string;collector:string;deviceChecks:string}|null>(null);
+  useEffect(()=>{const c=new AbortController();void fetch('/api/v1/placement',{signal:c.signal}).then(r=>r.ok?r.json():null).then(setPlacement).catch(()=>{});return()=>c.abort();},[]);
+  return settings?<section><h3>Desktop and collector</h3><p>{placement?.mode==='remote'?`Discovery, Internet checks and saved data are on ${placement.collector}. Playback and local device checks are on this desktop.`:placement?.mode==='service'?'This is a server collector. Its device checks describe the server, not a remote playback device.':'Standalone: this computer runs the interface, storage and collector.'}</p>{window.neoDesktop&&<p><button onClick={()=>void window.neoDesktop!.connection()}>Desktop connection</button> <button onClick={()=>void window.neoDesktop!.companion()}>Open browser companion folder</button></p>}<p>Every discovery scope still needs explicit review and Start. Connection changes do not automatically start discovery.</p></section>:<>{placement?.mode==='remote'?<>Remote collector<br/><strong>{placement.collector}</strong></>:<>Local home tech support<br/></>}</>;
+}

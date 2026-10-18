@@ -1,0 +1,70 @@
+# Explicit-scope IPv4 discovery
+
+## What runs
+
+Discovery is the only runtime collector. Test fixtures are isolated under tests/support and are absent from the production build. No job starts when Neo launches, lists local interfaces, opens the Discovery screen or previews settings. The user must select the source interface, CIDR and methods, review exact budgets, and explicitly confirm Start. The API revalidates the current interface and approved scope; the worker rechecks its host-supplied request. Real discovery shares the existing single active job slot, cancellation, storage limits and shutdown path.
+
+Implemented methods:
+- **IP/TCP:** numeric IPv4 destinations and selected TCP connect ports. No application payloads, banners, ICMP ping or ARP enumeration.
+- **Reverse DNS:** PTR queries for selected IPs through one explicitly selected on-link IPv4 DNS resolver, with fixed local source binding. No OS/public fallback or subsequent resolution of returned names. DNS may use UDP and TCP port 53; the selected resolver may forward upstream under its own policy.
+- **mDNS multicast:** one legacy-unicast-response PTR query for _services._dns-sd._udp.local to 224.0.0.251:5353, from an ephemeral source port on the selected IPv4 address. Multicast TTL 255. This collects service-type claims, not complete service instances or every device.
+- **SSDP multicast:** one fixed root-device M-SEARCH to 239.255.255.250:1900, MX 1 and multicast TTL 1. Retain a bounded USN claim only. LOCATION and other headers are discarded; no URLs, descriptions or UPnP control requests are fetched.
+- **Literal IPv4 broadcast:** one NetBIOS NB Name Query for the special browse-master name, UDP 137, local-subnet broadcast address derived from the current interface, TTL 1. This is limited legacy browse-master coverage; many modern devices will never answer. No NBSTAT follow-up, registration, release or control traffic is sent.
+
+An optional, separately disclosed Glances enrichment phase resolves only _glances._tcp REST advertisements and reads fixed stats paths after discovery. It has its own seven-query/two-endpoint limit inside the approved full-link scope; see [Glances](glances.md#optional-automatic-endpoint-discovery). General mDNS instance discovery, IPv6, ping, ARP, UDP port scanning, banners, fingerprints and real platform API adapters are not implemented. No privilege escalation or firewall/network-setting change is attempted.
+
+## Scope and budget
+
+- At most 256 addresses in one explicit CIDR contained in the selected interface subnet
+- The actual link's network/broadcast addresses and the collector's source address are excluded from TCP/PTR targets
+- Up to 64 chosen TCP ports and at most 16,384 address/port attempts; the common homelab profile contains 48 visible ports
+- Explicit TCP attempt budgets of 1,024, 4,096, 8,192 or 16,384 and concurrency of 8, 16 or 32; 400 ms connect deadlines, sockets destroyed on completion, starts paced to at most 100 per second
+- At most 256 PTR queries; concurrency eight, resolver timeout/tries bounds, cancellation and an independent worker/job deadline
+- One datagram per selected link-wide method; two-second receive windows, at most 256 received packets per method (including invalid/out-of-scope packets), 8 KiB per accepted datagram and one accepted result per sender
+- One initial pass with a selected 60/120/240/480-second whole-job deadline (default 240 seconds); conservative estimates reject a plan that cannot fit the chosen bounds
+- No retries, periodic scheduling or automatic scope restoration/start; discovery options never silently shrink the CIDR or port list to fit a budget
+
+TCP/DNS limits count attempts, not exact wire packets; operating-system TCP behavior and DNS TCP fallback may send extra packets. The UI previews this distinction.
+
+Multicast and broadcast reach link-wide listeners, not just accepted response IPs. They require explicit link-wide approval and the entire actual /24–/30 interface subnet. Wider subnets, /31-/32 links, subset CIDRs and overlapping local-interface subnets are rejected for these methods. The broadcast address is never caller-supplied. Per-address exclusions are not supported for this first discovery slice; use a smaller CIDR for unicast-only work.
+
+Every socket binds the selected local IPv4. Multicast also selects its outgoing interface explicitly. Source binding is not a universal operating-system routing-policy guarantee; Neo does not claim SO_BINDTODEVICE enforcement. Bind/send failures do not trigger an alternate interface or broader scope.
+
+## Untrusted responses and evidence
+
+Packet validation bounds headers, record counts, compression offsets/hops, label/name lengths and RDATA. Cyclic/truncated or mismatched packets are ignored. mDNS checks source port, transaction ID, repeated question and PTR owner. NBNS checks the fixed query's transaction, sender port, bounded NB/IN records and six-byte address-entry format. SSDP checks the response status, ST, bounded USN and positive valid CACHE-CONTROL max-age. Replies may use an ephemeral source port, but their source IP must remain in the approved scope; receiving them never opens another socket or widens targets. Returned addresses and URLs never become new targets. Node does not expose incoming IP TTL through this UDP API; no receive-hop verification is claimed.
+
+Each attempted IP produces one bounded **address candidate** observation, including silence/timeouts, so attempts are not silently counted as discovered devices. Source, UUID, job/address identity, observation time and freshness policy are assigned in the parent. Service health stays unknown. A TCP refusal may come from a firewall; a PTR name is an unverified naming claim; an advertisement may describe a proxy. None establishes a stable device identity.
+
+Identity is scoped to the job plus address. Another job creates a separate candidate rather than permanently merging devices by IP or MAC. This deliberately conservative first model does not yet reconcile candidates across scans. Fixture evidence uses a separate synthetic marker/source, including the internal test-only discovery seam.
+
+Normal network attempt evidence uses a 60-second freshness policy; mDNS/SSDP advertisement-bearing observations use the smaller advertised expiry and a ten-second cap. Their aggregate observation time is conservatively anchored to the parent's attempt start, so later TCP/PTR work cannot restart a cached advertisement's freshness; this can also mark the aggregate's newer unicast evidence stale earlier. Receipt time still records persistence separately. Late receipt/replay does not authorize new targets. Partial observations are persisted as batches arrive. Timeouts, response caps or errors leave prior data intact and a failed/timed-out/cancelled status as appropriate; silence alone is inconclusive.
+
+## Local use and privacy
+
+Start the loopback application normally, then choose **Add or rescan systems** from the overview. Methods and scope start unselected; TCP offers the visible common profile when enabled. Preview does not send packets. Confirm only networks you are authorized to test. Closing the modal preserves edits and clears consent. To stop, cancel in Activity or stop Neo.
+
+The local database may contain private IP addresses, PTR names, interface details and advertisement claims. Nothing is uploaded by Neo; protect the database/backups and do not publish them. No account credentials are needed by these discovery methods. Do not expose the current unauthenticated API to a LAN, proxy or public tunnel.
+
+A physical-network validation still requires the owner's chosen interface, authorized scope/methods and explicit local action. No such scan was performed during development.
+
+## Verification boundary
+
+CI uses synthetic interface descriptions, injected multicast/broadcast send seams and isolated loopback TCP/DNS fixtures. It never sends multicast or broadcast onto the GitHub runner's LAN. Unit lifecycle tests inject a separate test-support worker, inaccessible to API/environment settings. The production worker has no mock branch. Production smoke executes its actual TCP transport against an isolated loopback listener; the public scope validator still rejects loopback. Browser cases check preview/confirmation/reset behavior using intercepted discovery endpoints; they do not establish physical discovery interoperability.
+
+Read current PR checks for execution status. The continuation verified unit behavior on Windows with isolated loopback TCP/DNS/HTTP fixtures, including shutdown and preservation of partial stats. Physical network behavior, firewall effects, multihomed routing and actual responder coverage remain unverified. Real Proxmox transport is deferred.
+
+## Protocol references
+
+- [Node DNS Resolver](https://nodejs.org/docs/latest-v24.x/api/dns.html) and [UDP sockets](https://nodejs.org/docs/latest-v24.x/api/dgram.html)
+- [mDNS one-shot queries](https://www.rfc-editor.org/rfc/rfc6762.html#section-5.1) and [legacy unicast responses](https://www.rfc-editor.org/rfc/rfc6762.html#section-6.7)
+- [DNS-SD service-type enumeration](https://www.rfc-editor.org/rfc/rfc6763.html#section-9)
+- [NBNS broadcast name query](https://www.rfc-editor.org/rfc/rfc1002.html#section-4.2.12)
+- [Documented browse-master discovery](https://nmap.org/nsedoc/scripts/broadcast-netbios-master-browser.html): interoperability reference only; no Nmap code is included
+- [UPnP device architecture / SSDP](https://www.upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.0-20080424.pdf)
+
+## System defaults and method diagnostics
+
+Selecting an interface fills its actual CIDR. DNS configuration is read locally: Windows uses a fixed PowerShell Get-DnsClientServerAddress command (no profile, no interactive shell, no remote session, two-second timeout, 64 KiB output cap); reads are single-flight and cached for ten seconds. Interface alias matching and IPv4 validation happen in code. A labelled system-wide getServers result is the fallback. Unsupported off-link, IPv6 or stub resolvers are shown but never silently selected. Manual edits remain until explicit interface selection changes. Scope/method changes reset preview and consent.
+
+Completed runs retain bounded per-method attempted/completed/response counts, elapsed milliseconds and allowlisted issue categories. Raw errors, stacks and packet payloads are never shown. completed_with_issues means useful evidence was retained but one or more methods had incomplete coverage. Cancellation, overall deadline, worker/protocol failure remain separate terminal states. Old generic failures cannot recover discarded method details.

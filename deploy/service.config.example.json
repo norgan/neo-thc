@@ -1,0 +1,8 @@
+{
+  "listenAddress": "192.0.2.10",
+  "origin": "https://neo.example.net:7443",
+  "tokenFile": "/etc/neo-thc/access-token",
+  "certificateFile": "/etc/neo-thc/server.crt",
+  "keyFile": "/etc/neo-thc/server.key",
+  "databaseFile": "/var/lib/neo-thc/neo.sqlite"
+}
