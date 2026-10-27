@@ -3,6 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { CollectionIssues, observationAllowed, type CollectorAdapter, type CollectionContext } from './collector.js';
 import type { Job, JobSpec, JobStatus, ObservationInput, DiscoveryProgress, DiscoveryOutcome, GlancesEnrichment, DiagnosticReport } from '../shared/types.js';
 import { MAX_JOBS, Store } from './store.js';
+import {benchmarkComparisons,type DnsBenchmarkReport} from '../shared/dns-benchmark.js';
 
 export class RequestError extends Error {
   constructor(readonly statusCode: number, message: string) { super(message); }
@@ -94,6 +95,7 @@ async function collectWithDeadline(
 
 export interface EnrichmentRunner {readonly problem:string|null;run(job:Job,signal:AbortSignal,publish:(state:GlancesEnrichment)=>void):Promise<boolean>}
 export interface DiagnosticsRunner {readonly problem:string|null;run(job:Job,signal:AbortSignal,publish:(state:DiagnosticReport)=>void):Promise<boolean>}
+export interface DnsBenchmarkExecutor {readonly problem:string|null;run(job:Job,signal:AbortSignal,publish:(state:DnsBenchmarkReport)=>void):Promise<boolean>}
 
 type Active = { job: Job; controller: AbortController; reason: JobStatus | null; done: Promise<void> };
 
@@ -107,7 +109,7 @@ export class JobManager {
   get problem(): string | null {
     return this.storageFailed
       ? 'Job state could not be saved. Collection is disabled; activity may be incomplete. Check local storage and restart Neo.'
-      : this.adapter.problem ?? this.discoveryAdapter?.problem ?? this.enrichment?.problem ?? this.diagnostics?.problem ?? null;
+      : this.adapter.problem ?? this.discoveryAdapter?.problem ?? this.enrichment?.problem ?? this.diagnostics?.problem ?? this.dnsBenchmark?.problem ?? null;
   }
 
   private persist(job: Job): void {
@@ -118,7 +120,7 @@ export class JobManager {
     }
   }
 
-  constructor(private readonly store: Store, private readonly adapter: CollectorAdapter, private readonly probeTimeoutMs = 750, private readonly discoveryAdapter?: CollectorAdapter, private readonly enrichment?: EnrichmentRunner, private readonly diagnostics?:DiagnosticsRunner) {
+  constructor(private readonly store: Store, private readonly adapter: CollectorAdapter, private readonly probeTimeoutMs = 750, private readonly discoveryAdapter?: CollectorAdapter, private readonly enrichment?: EnrichmentRunner, private readonly diagnostics?:DiagnosticsRunner, private readonly dnsBenchmark?:DnsBenchmarkExecutor) {
     for (const job of store.jobs()) {
       if (job.status === 'queued' || job.status === 'running') {
         store.saveJob({ ...job, status: 'interrupted', finishedAt: Date.now(),
@@ -132,6 +134,7 @@ export class JobManager {
     if (this.problem) throw new RequestError(503, this.problem);
     if (spec.discovery && !this.discoveryAdapter) throw new RequestError(503, 'Discovery is unavailable');
     if (spec.diagnostic && (!this.diagnostics || spec.discovery)) throw new RequestError(503, 'Diagnostics are unavailable');
+    if (spec.dnsBenchmark && (!this.dnsBenchmark || spec.discovery || spec.diagnostic)) throw new RequestError(503, 'DNS benchmarking is unavailable');
     if(spec.discovery?.glances&&!this.enrichment)throw new RequestError(503,'Automatic Glances enrichment is unavailable');
     const existing = this.store.jobByRequest(requestId);
     if (existing) {
@@ -144,9 +147,9 @@ export class JobManager {
     const targets = spec.scope.filter((target) => !spec.exclusions.includes(target));
     const job: Job = {
       id: randomUUID(), requestId, spec: structuredClone(spec), status: 'queued',
-      synthetic: spec.diagnostic ? false : !spec.discovery || this.discoveryAdapter?.id !== 'discovery-v1',
+      synthetic: spec.diagnostic || spec.dnsBenchmark ? false : !spec.discovery || this.discoveryAdapter?.id !== 'discovery-v1',
       createdAt: Date.now(), startedAt: null, finishedAt: null,
-      completedTargets: 0, totalTargets: targets.length * spec.maxCycles,
+      completedTargets: 0, totalTargets: spec.dnsBenchmark ? benchmarkComparisons(spec.dnsBenchmark).length : targets.length * spec.maxCycles,
       cyclesCompleted: 0, observationsAdded: 0, errors: [],
     };
     this.persist(job);
@@ -181,6 +184,14 @@ export class JobManager {
     }, job.spec.maxDurationMs);
     try {
       this.persist(job);
+      if(job.spec.dnsBenchmark&&this.dnsBenchmark){
+        const issues=await this.dnsBenchmark.run(job,signal,(report)=>{
+          signal.throwIfAborted();if(this.active!==active||job.status!=='running')return;
+          job.dnsBenchmarkReport=report;job.completedTargets=report.results.length;this.persist(job);
+        });
+        signal.throwIfAborted();job.cyclesCompleted=1;
+        job.status=issues?'completed_with_issues':'completed';return;
+      }
       if(job.spec.diagnostic&&this.diagnostics){
         const issues=await this.diagnostics.run(job,signal,(report)=>{
           signal.throwIfAborted();if(this.active!==active||job.status!=='running')return;

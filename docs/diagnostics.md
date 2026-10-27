@@ -18,6 +18,10 @@ The download rate includes connection/setup time. Samples below 256 KiB or 100 m
 
 Windows uses fixed PowerShell commands over native .NET interface metadata and .NET Ping, avoiding slow CIM lookups for these diagnostic settings. It records MTU, configured gateways, DNS addresses/suffix and IPv4 DHCP state; IPv6 DHCP stays unknown because that API does not expose it. Only one unique configured IPv4 gateway is suggested; ambiguity produces no suggestion. Diagnostic configuration reads run concurrently and are owned by the request/shutdown lifecycle. Linux reads interface/route metadata and uses the fixed iputils ping executable when available. Unsupported/unavailable measurements are explicit. A configured gateway does not verify actual route priority or every address-family path. Scoped link-local gateway addresses are not supported by this slice.
 
+## Repeated DNS comparisons
+
+The [DNS benchmark](dns-benchmark.md) compares selected system/public IPv4 and IPv6 resolvers, A/AAAA questions and UDP/TCP using pinned dns-bench 0.14.0. It has its own reviewed matrix, three-minute job bound and saved incremental results. Resolver discovery uses NEO's structured Windows interface read; numeric scoped IPv6 is supported by the benchmark. The targeted checks below retain their existing scope and provide the DNS error/TTL detail omitted by upstream's aggregate benchmark output.
+
 ## Targeted DNS and connection checks
 
 1. Enter a full ASCII hostname without URL paths or credentials, or choose the YouTube/Netflix DNS shortcut. Select up to three literal DNS servers and one port. The first system-configured resolver is suggested; other interface entries, including IPv6, remain visible.

@@ -1,3 +1,5 @@
+import type {DnsBenchmarkPlan,DnsBenchmarkReport} from './dns-benchmark.js';
+
 export type Health = 'healthy' | 'unhealthy' | 'stopped' | 'unknown';
 export type Freshness = 'fresh' | 'stale' | 'unknown';
 export interface Identifier {
@@ -49,6 +51,7 @@ export interface JobSpec {
   maxDurationMs: number;
   discovery?: DiscoveryPlan;
   diagnostic?: DiagnosticPlan;
+  dnsBenchmark?: DnsBenchmarkPlan;
 }
 export type JobStatus =
   | 'queued' | 'running' | 'completed' | 'cancelled'
@@ -71,6 +74,7 @@ export interface Job {
   discoveryOutcomes?: DiscoveryOutcome[];
   glancesEnrichment?: GlancesEnrichment;
   diagnosticReport?: DiagnosticReport;
+  dnsBenchmarkReport?: DnsBenchmarkReport;
 }
 export interface FixtureTarget {
   key: string;

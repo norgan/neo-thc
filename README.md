@@ -57,6 +57,8 @@ For a specific name, enter its full hostname or choose **YouTube DNS / Netflix D
 
 Saved diagnoses show partial results, findings and a clear next step. Repeat during an intermittent stall and compare recent timing. Diagnosis changes no network settings. See [home support diagnosis](docs/diagnostics.md) for scope and interpretation. The inventory scanner remains IPv4-only; targeted IPv6 DNS and connection checks are implemented separately.
 
+**DNS benchmark: system resolvers and IPv6** adds pinned `dns-bench` 0.14.0. It compares configured system DNS and explicit public candidates across IPv4/IPv6 resolver transport, A/AAAA questions and UDP/TCP, with repeated measurements, reliability-first summaries and saved partial results. NEO reads system DNS itself and supplies it explicitly, avoiding upstream's IPv6-first Windows discovery bug. New Windows packages bundle the checksum-verified engine; source checkouts use `npm run setup:dns-bench`. See [DNS benchmark setup, scope and interpretation](docs/dns-benchmark.md). A benchmark winner describes the successful selected tests; filtering, local names, encrypted DNS and application behaviour need their own evidence.
+
 ## Safety and data
 
 The normal browser and desktop front ends bind to 127.0.0.1 only. Their Host/Origin/client-header guards are local browser defenses, not user authentication. The separate opt-in `start:service` entry point requires an explicit listen address, exact HTTPS origin, valid certificate/key and a strong administrative token. Do not expose the local entry point or publish the service to the public Internet. Use the reviewed private LAN/VPN path described in [deployment](deploy/README.md).

@@ -20,9 +20,10 @@
     "smoke": "node scripts/smoke.mjs",
     "test:browser": "playwright test",
     "desktop": "electron .",
-    "package:desktop": "electron-builder --win portable nsis --x64 --publish never",
+    "setup:dns-bench": "node scripts/setup-dns-bench.mjs",
+    "package:desktop": "node scripts/setup-dns-bench.mjs --windows-x64 && electron-builder --win portable nsis --x64 --publish never",
     "start:service": "node dist/server/server/service.js",
-    "package:service": "node scripts/package-service.mjs"
+    "package:service": "node scripts/setup-dns-bench.mjs && node scripts/package-service.mjs"
   },
   "dependencies": {
     "fastify": "5.12.5",
@@ -48,7 +49,7 @@
     "asar": false,
     "compression": "store",
     "directories": {"output": "release"},
-    "files": ["desktop/**/*", "dist/**/*", "browser-companion/**/*", "package.json"],
+    "files": ["desktop/**/*", "dist/**/*", "browser-companion/**/*", "tools/dns-bench/**/*", "package.json"],
     "win": {"signExecutable": false, "artifactName": "NEO-THC-${version}-${arch}-Setup.${ext}"},
     "portable": {"artifactName": "NEO-THC-${version}-${arch}-Portable.${ext}"},
     "nsis": {"oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true}

@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import type {DiagnosticPlan,DiagnosticReport,Job,InternetCheck} from '../shared/types.js';
 import {connectionAddressProblem,diagnosticAddresses,dnsOutcomeLabel} from '../shared/diagnostics.js';
 import {MEDIA_HOSTS,INTERNET_TARGET,DOWNLOAD_HOST,latencySummary} from '../shared/internet.js';
+import {DnsBenchmark} from './DnsBenchmark.js';
 
 async function api<T>(path:string,body?:unknown):Promise<T>{
   const response=await fetch('/api/v1/diagnostics/'+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),
@@ -97,6 +98,7 @@ export function Diagnostics({active,selectedJobId,jobs,blockedReason,onUpdated,o
       <label className="check"><input type="checkbox" checked={confirmed} disabled={busy||!!blockedReason} onChange={(event)=>setConfirmed(event.target.checked)}/>I approve sending this hostname and these exact checks.</label>
       <button className="primary" disabled={!confirmed||busy||!!blockedReason} onClick={()=>void start()}>Start approved checks</button>
     </section>}
+    <DnsBenchmark active={active} selectedJobId={selectedJobId} jobs={jobs} blockedReason={blockedReason} onUpdated={onUpdated} onCancel={onCancel}/>
     <section className="panel"><h3>Saved diagnoses</h3>
       {history.length>1&&report?.kind==='internet'?<details><summary>Recent Internet and streaming checks</summary><ul>{history.filter((job)=>job.spec.diagnostic?.kind==='internet'&&job.diagnosticReport).slice(0,5).map((job)=>{
         const sample=job.diagnosticReport!.internet?.find((check)=>check.kind==='transfer'),ping=job.diagnosticReport!.internet?.find((check)=>check.kind==='latency'&&check.target===INTERNET_TARGET);

@@ -1,0 +1,12 @@
+{
+  "name": "dns-bench",
+  "version": "0.14.0",
+  "repository": "https://github.com/qwerty541/dns-bench",
+  "license": "MIT",
+  "windows": {
+    "architecture": "x64",
+    "url": "https://github.com/qwerty541/dns-bench/releases/download/v0.14.0/dns-bench.exe",
+    "size": 8114016,
+    "sha256": "53f536626098e6deb0b632cebe675b95ff33b8dffc7b7bee8236e780ec4b2664"
+  }
+}
