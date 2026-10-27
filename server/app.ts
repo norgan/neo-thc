@@ -12,24 +12,28 @@ import { GLANCES_PATHS, resolveGlancesTarget, readGlances, glancesRequest } from
 import {GlancesEnricher,createGlancesWorker} from './glances-enrichment.js';
 import { Store } from './store.js';
 import {DiagnosticRunner,parseDiagnostic,type createDiagnosticWorker} from './diagnostics.js';
-import {diagnosticOptions} from './diagnostic-options.js';
+import {diagnosticOptions,benchmarkResolverProblem} from './diagnostic-options.js';
 import {InternetRunner,type InternetProbes} from './internet-runner.js';
 import {internetOperations,INTERNET_DURATION_MS} from '../shared/internet.js';
 import {accessProblem,type AccessPolicy} from './access.js';
 import {parsePlayback} from '../shared/playback.js';
 import {deviceEvidence} from './device.js';
+import {DnsBenchmarkRunner} from './dns-benchmark-runner.js';
+import {dnsBenchmarkPreview,parseDnsBenchmark,PUBLIC_DNS_BENCHMARK_RESOLVERS} from './dns-benchmark.js';
+import {DNS_BENCHMARK_LIMITS} from '../shared/dns-benchmark.js';
 
 const allowedHosts = new Set(['127.0.0.1:4318', 'localhost:4318', '127.0.0.1:5173', 'localhost:5173']);
 const allowedOrigins = new Set([...allowedHosts].map((host) => 'http://' + host));
 
-export function createApp(options: { dbPath?: string; webRoot?: string; access?:AccessPolicy; tls?:{key:Buffer;cert:Buffer}; deviceVantage?:'this-computer'|'collector'; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker; diagnosticWorkerFactory?:typeof createDiagnosticWorker; internetProbes?:InternetProbes; readDiagnosticOptions?:typeof diagnosticOptions } = {}) {
+export function createApp(options: { dbPath?: string; webRoot?: string; access?:AccessPolicy; tls?:{key:Buffer;cert:Buffer}; deviceVantage?:'this-computer'|'collector'; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker; diagnosticWorkerFactory?:typeof createDiagnosticWorker; internetProbes?:InternetProbes; readDiagnosticOptions?:typeof diagnosticOptions; dnsBenchmarkRunner?:Pick<DnsBenchmarkRunner,'problem'|'run'|'capability'> } = {}) {
   if(options.access?.mode==='service'&&!options.tls)throw new Error('Service mode requires TLS');
   const store = new Store(options.dbPath, options.testSupport !== true);
   const discovery = options.discoveryAdapter ?? new DiscoveryCollector();
   const adapter = options.testSupport ? options.adapter ?? discovery : discovery;
   const interfaces = options.discoveryInterfaces ?? localInterfaces;
   const enrichment = new GlancesEnricher(store,interfaces,options.glancesWorkerFactory,options.glancesRead);
-  const jobs = new JobManager(store, adapter, options.probeTimeoutMs, discovery,enrichment,new DiagnosticRunner(options.diagnosticWorkerFactory,new InternetRunner(options.internetProbes)));
+  const dnsBenchmark=options.dnsBenchmarkRunner??new DnsBenchmarkRunner();
+  const jobs = new JobManager(store, adapter, options.probeTimeoutMs, discovery,enrichment,new DiagnosticRunner(options.diagnosticWorkerFactory,new InternetRunner(options.internetProbes)),dnsBenchmark);
   let statsActive: {requestId:string;controller:AbortController;done:Promise<unknown>}|null=null;
   let statsProblem:string|null=null;
   const configReads=new Set<{controller:AbortController;done:Promise<unknown>}>();
@@ -131,6 +135,34 @@ export function createApp(options: { dbPath?: string; webRoot?: string; access?:
     if(statsActive||statsProblem)throw new RequestError(409,'A stats read is active or unavailable. Finish it before diagnostics.');
     const {requestId,spec}=parseDiagnostic(request.body,store,true),prior=store.jobByRequest(requestId);
     return reply.code(prior?200:202).send({job:jobs.start(requestId,spec)});
+  });
+
+  app.get('/api/v1/dns-benchmark/options',async(_request,reply)=>{
+    if(configReads.size>=4)throw new RequestError(409,'A configuration read is already active. Try again shortly.');
+    const controller=new AbortController();
+    const done=Promise.all([(options.readDiagnosticOptions??diagnosticOptions)(controller.signal),dnsBenchmark.capability(controller.signal)]);
+    const read={controller,done},abort=()=>controller.abort();configReads.add(read);reply.raw.once('close',abort);
+    try{
+      const [configuration,capability]=await done;
+      const resolvers=configuration.resolvers.map(({reason:_priorReason,...row})=>{
+        const reason=benchmarkResolverProblem(row.address);return {...row,supported:reason===null,...(reason?{reason}:{})};
+      });
+      return {source:configuration.source,resolvers,capability,publicResolvers:PUBLIC_DNS_BENCHMARK_RESOLVERS,limits:DNS_BENCHMARK_LIMITS};
+    }finally{reply.raw.removeListener('close',abort);configReads.delete(read);}
+  });
+  app.post('/api/v1/dns-benchmark/preview',async(request)=>dnsBenchmarkPreview(parseDnsBenchmark(request.body).plan));
+  app.post('/api/v1/dns-benchmark/jobs',async(request,reply)=>{
+    if(statsActive||statsProblem)throw new RequestError(409,'A stats read is active or unavailable. Finish it before benchmarking DNS.');
+    const {requestId,spec}=parseDnsBenchmark(request.body,true),prior=store.jobByRequest(requestId);
+    // Keep replay idempotent, including after the executable has moved or been removed.
+    if(prior)return reply.code(200).send({job:jobs.start(requestId,spec)});
+    if(configReads.size>=4)throw new RequestError(409,'A configuration read is already active. Try again shortly.');
+    const controller=new AbortController(),read={controller,done:dnsBenchmark.capability(controller.signal)};
+    const abort=()=>controller.abort();configReads.add(read);reply.raw.once('close',abort);
+    let capability;
+    try{capability=await read.done;}finally{reply.raw.removeListener('close',abort);configReads.delete(read);}
+    if(!capability.available)throw new RequestError(503,capability.reason??'DNS benchmark tool is unavailable on this collector.');
+    return reply.code(202).send({job:jobs.start(requestId,spec)});
   });
 
   app.post<{Params:{id:string}}>('/api/v1/assets/:id/glances/preview',async(request)=>{

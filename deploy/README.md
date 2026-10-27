@@ -22,6 +22,8 @@ No real deployment, firewall rule, account creation or certificate enrollment is
 
 ## Placement and failure behavior
 
+DNS benchmarking is optional. Windows service bundles built with this change include checksum-verified dns-bench 0.14.0. Linux/macOS services need the pinned native executable on the service account's PATH or an absolute `NEO_DNS_BENCH_PATH`; the Docker recipe does not install it automatically. [Setup and benchmark boundaries](../docs/dns-benchmark.md). In remote mode all system-resolver discovery and benchmark measurements belong to the selected server, including IPv6 interface scopes. A missing executable leaves the other diagnostics available.
+
 - Discovery interfaces, DNS/Internet checks, inventory and report storage belong to the **server**.
 - Actual playback capture belongs to the **browser/device playing the video**. The browser companion exports a minimized report for explicit import. Import in remote mode sends that report to your selected server, where up to 200 reports are retained.
 - Desktop CPU/memory/Wi-Fi checks belong to the **desktop computer**, including in remote mode. They do not measure a TV, phone or remote browser.

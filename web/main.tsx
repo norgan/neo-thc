@@ -93,7 +93,7 @@ function App() {
   const selectedAssetId=selectedSystem?.currentAssetId;
   const visibleSystems=systems.filter((system)=>(showAttempts||system.responded)&&(!search||[system.displayName,system.address,...system.services.map((service)=>service.name),...system.roles.map((role)=>role.label)].join(' ').toLowerCase().includes(search.toLowerCase())));
   const jobs=(snapshot?.jobs??[]).filter((job)=>job.synthetic!==true&&!!job.spec.discovery);
-  const diagnosticJobs=(snapshot?.jobs??[]).filter((job)=>job.synthetic===false&&!!job.spec.diagnostic);
+  const diagnosticJobs=(snapshot?.jobs??[]).filter((job)=>job.synthetic===false&&(!!job.spec.diagnostic||!!job.spec.dnsBenchmark));
   const running=[...jobs,...diagnosticJobs].find(activeJob);
   const evidenceId=assets.find((asset)=>asset.id===selectedAssetId)?.latest?.id;
   useEffect(()=>{
@@ -187,8 +187,8 @@ function App() {
       </details>}
     </section>}
     {tab==='Activity'&&<section><div className="section-title"><h2>Collection activity</h2><button onClick={openDiscovery}>New discovery</button></div>
-      {diagnosticJobs.map((job)=><article className="panel" key={job.id}><div className="row"><h3>{job.spec.diagnostic?.hostname} · diagnosis</h3><Badge value={job.status}/></div>
-        <p>{time(job.createdAt)} · {job.spec.diagnostic?.kind==='dns'?'DNS resolution':job.spec.diagnostic?.kind==='internet'?'Home Internet and streaming':'IPv4/IPv6 connection paths'}</p>
+      {diagnosticJobs.map((job)=><article className="panel" key={job.id}><div className="row"><h3>{job.spec.dnsBenchmark?job.spec.dnsBenchmark.hostnames.join(', '):job.spec.diagnostic?.hostname} · diagnosis</h3><Badge value={job.status}/></div>
+        <p>{time(job.createdAt)} · {job.spec.dnsBenchmark?'System and public DNS benchmark':job.spec.diagnostic?.kind==='dns'?'DNS resolution':job.spec.diagnostic?.kind==='internet'?'Home Internet and streaming':'IPv4/IPv6 connection paths'}</p>
         <button onClick={()=>{setDiagnosticSelection(job.id);setTab('Diagnostics');}}>View diagnosis</button>{activeJob(job)&&<button disabled={busy} onClick={()=>void cancel(job)}>Cancel checks</button>}</article>)}
       {!jobs.length&&!diagnosticJobs.length&&<div className="panel">No collection jobs yet. Choose discovery or diagnosis to begin.</div>}
       <div className="job-list">{jobs.map((job)=><article className="panel" key={job.id}>

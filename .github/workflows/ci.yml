@@ -2,7 +2,7 @@ name: Foundation checks
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'feat/initial-foundation']
   workflow_dispatch:
 
 permissions:
@@ -79,6 +79,8 @@ jobs:
         run: npm run package:desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify pinned dns-bench over isolated IPv4 and IPv6 UDP and TCP
+        run: node scripts/dns-benchmark-smoke.mjs
       - name: Exercise actual packaged desktop and shutdown
         run: node scripts/desktop-smoke.mjs
         env:

@@ -10,8 +10,8 @@ import {deviceEvidence} from './device.js';
 import {RequestError} from './jobs.js';
 export interface RemoteConnection {origin:string;token:string;ca?:Buffer}
 export function allowedRemotePath(method:string,path:string){
-  if(method==='GET')return /^\/api\/v1\/(?:health|snapshot|assets(?:\/[a-zA-Z0-9-]+)?|jobs(?:\/[a-zA-Z0-9-]+)?|discovery\/options|diagnostics\/options|playback)$/.test(path);
-  return method==='POST'&&/^\/api\/v1\/(?:jobs\/[a-zA-Z0-9-]+\/cancel|discovery\/(?:preview|jobs)|diagnostics\/(?:preview|jobs)|assets\/[a-zA-Z0-9-]+\/glances\/(?:preview|read)|stats\/[a-zA-Z0-9-]+\/cancel|playback)$/.test(path);
+  if(method==='GET')return /^\/api\/v1\/(?:health|snapshot|assets(?:\/[a-zA-Z0-9-]+)?|jobs(?:\/[a-zA-Z0-9-]+)?|discovery\/options|diagnostics\/options|dns-benchmark\/options|playback)$/.test(path);
+  return method==='POST'&&/^\/api\/v1\/(?:jobs\/[a-zA-Z0-9-]+\/cancel|discovery\/(?:preview|jobs)|diagnostics\/(?:preview|jobs)|dns-benchmark\/(?:preview|jobs)|assets\/[a-zA-Z0-9-]+\/glances\/(?:preview|read)|stats\/[a-zA-Z0-9-]+\/cancel|playback)$/.test(path);
 }
 export async function remoteRequest(connection:RemoteConnection,method:string,path:string,body:unknown,signal:AbortSignal,transport:typeof httpsRequest=httpsRequest):Promise<{status:number;body:unknown}>{
   const origin=serviceOrigin(connection.origin);if(!validToken(connection.token)||!allowedRemotePath(method,path))throw new Error('Invalid remote request');

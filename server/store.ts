@@ -9,7 +9,8 @@ const realEvidence = "json_type(payload, '$.synthetic') = 'false' AND json_extra
 export const isRealObservation = (value: ObservationInput): boolean => value.synthetic === false && value.source === 'discovery-v1';
 export const isRealJob = (job: Job): boolean => job.spec.scope.length === 1 && (
   job.synthetic !== true && !!job.spec.discovery && job.spec.scope[0] === 'discovery:ipv4' ||
-  job.synthetic === false && !!job.spec.diagnostic && job.spec.scope[0] === 'diagnostics:connectivity');
+  job.synthetic === false && !!job.spec.diagnostic && job.spec.scope[0] === 'diagnostics:connectivity' ||
+  job.synthetic === false && !!job.spec.dnsBenchmark && job.spec.scope[0] === 'diagnostics:dns-benchmark');
 
 /** Synchronous SQLite is deliberately bounded to this local single-process collector. */
 export class Store {
