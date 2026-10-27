@@ -11,7 +11,7 @@ type Options={
   limits:typeof DNS_BENCHMARK_LIMITS;
 };
 type Preview={plan:DnsBenchmarkPlan;maxDurationMs:number;comparisons:number;lookupIterations:number;warning:string;body:Record<string,unknown>;key:string};
-type Props={active:boolean;selectedJobId:string;jobs:Job[];blockedReason:string;onUpdated:()=>void;onCancel:(job:Job)=>void};
+type Props={active:boolean;selectedJobId:string;jobs:Job[];blockedReason:string;onUpdated:()=>void;onCancel:(job:Job)=>void;onAskAssistant?:(question:string,focusJobId?:string)=>void};
 const when=(value:number)=>new Date(value).toLocaleString();
 const items=(value:string)=>value.split(/[\s,]+/).filter(Boolean);
 const ms=(value:number|null)=>value===null?'Not measured':value.toFixed(2)+' ms';
@@ -29,7 +29,7 @@ function defaults(options:Options){
   return [...new Set([...options.resolvers.filter(row=>row.supported).map(row=>row.address),...options.publicResolvers.map(row=>row.address)])];
 }
 
-export function DnsBenchmark({active,selectedJobId,jobs,blockedReason,onUpdated,onCancel}:Props){
+export function DnsBenchmark({active,selectedJobId,jobs,blockedReason,onUpdated,onCancel,onAskAssistant}:Props){
   const [options,setOptions]=useState<Options|null>(null),[optionError,setOptionError]=useState(''),[reload,setReload]=useState(0);
   const [resolvers,setResolvers]=useState(''),[hostnames,setHostnames]=useState('example.com\ncloudflare.com\nquad9.net'),[port,setPort]=useState('53');
   const [protocols,setProtocols]=useState<('udp'|'tcp')[]>(['udp','tcp']),[recordTypes,setRecordTypes]=useState<('A'|'AAAA')[]>(['A','AAAA']);
@@ -85,6 +85,7 @@ export function DnsBenchmark({active,selectedJobId,jobs,blockedReason,onUpdated,
   }
 
   return <section className="panel dns-benchmark" aria-labelledby="dns-benchmark-title">
+    {onAskAssistant&&history.length>0&&<div className="assistant-entry"><button onClick={()=>onAskAssistant('Compare my system DNS and public resolver benchmark results across IPv4, IPv6, UDP, TCP, A and AAAA. Explain reliability, latency, missing coverage and the next useful improvement without assuming the lowest latency is best overall.',selected?.id)}>Explain DNS comparison</button></div>}
     <h3 id="dns-benchmark-title">DNS benchmark: system resolvers and IPv6</h3>
     <p>Compare your configured DNS servers with public candidates using repeated lookups. The default comparison includes IPv4 and IPv6 resolver addresses, A and AAAA records, and both UDP and TCP.</p>
     <p className="muted">Runs on the selected collector computer. NEO supplies the selected addresses directly to dns-bench, including system resolvers, so its Windows DNS discovery parser is bypassed. Nothing runs until you review and start.</p>

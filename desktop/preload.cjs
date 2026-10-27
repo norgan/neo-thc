@@ -1,2 +1,2 @@
 const {contextBridge,ipcRenderer}=require('electron');
-contextBridge.exposeInMainWorld('neoDesktop',Object.freeze({connection:()=>ipcRenderer.invoke('neo:open-connection'),companion:()=>ipcRenderer.invoke('neo:open-companion')}));
+contextBridge.exposeInMainWorld('neoDesktop',Object.freeze({connection:section=>ipcRenderer.invoke('neo:open-connection',section),companion:()=>ipcRenderer.invoke('neo:open-companion')}));

@@ -1,6 +1,6 @@
 # Deploy the NEO collector on another computer
 
-This bundle is the API, SQLite storage and scoped discovery service. Your NEO desktop app serves its own front end and connects directly to this service over authenticated TLS. There is no hosted control plane, cloud upload, arbitrary command endpoint or automatic discovery. Service credentials allow all of this single collector's existing diagnostic/discovery operations; this release is for a household administrator, not a multi-user permissions system.
+This bundle is the API, SQLite storage and scoped discovery service. Your NEO desktop app serves its own front end and connects directly to this service over authenticated TLS. Core collection and storage remain local. The optional NEO assistant sends reviewed evidence and questions to OpenAI only after explicit submission. There is no hosted control plane, arbitrary command endpoint or automatic discovery. Service credentials allow all of this single collector's existing diagnostic/discovery operations; this release is for a household administrator, not a multi-user permissions system.
 
 ## Minimal setup
 
@@ -21,6 +21,8 @@ No real deployment, firewall rule, account creation or certificate enrollment is
 `docker build -f deploy/Dockerfile -t neo-thc:0.2.1 .` creates the Linux service image from this compiled bundle. Mount configuration read-only and data writable for the `node` user. Linux host networking is needed for host LAN interfaces and link-local discovery; a bridge sees the container network instead. Host networking also makes the explicitly configured listener reachable on the host. Review that placement and access before starting it. No ports are published by default. Systemd and Docker templates are provided; a real second host and container deployment still need acceptance in your environment.
 
 ## Placement and failure behavior
+
+The optional assistant uses the **server's** OpenAI API key, supplied as `NEO_OPENAI_API_KEY` (or `OPENAI_API_KEY` fallback) in its protected environment. `NEO_OPENAI_MODEL` defaults to `gpt-6.1-sol`. Desktop credentials are never forwarded to a remote server. With no key, saved evidence and deterministic findings still work, and the Assistant view explains setup. The fixed outbound API destination is `https://api.openai.com/v1/responses`; reviewed diagnostic context and questions leave the collector when an authorised user sends them. [Assistant setup and retention](../docs/assistant.md).
 
 DNS benchmarking is optional. Windows service bundles built with this change include checksum-verified dns-bench 0.14.0. Linux/macOS services need the pinned native executable on the service account's PATH or an absolute `NEO_DNS_BENCH_PATH`; the Docker recipe does not install it automatically. [Setup and benchmark boundaries](../docs/dns-benchmark.md). In remote mode all system-resolver discovery and benchmark measurements belong to the selected server, including IPv6 interface scopes. A missing executable leaves the other diagnostics available.
 

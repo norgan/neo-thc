@@ -12,8 +12,8 @@ async function api<T>(path:string,body?:unknown):Promise<T>{
 type Options={source:string;gateway?:string|null;resolvers:{interface:string;address:string;family:number;supported:boolean}[];
   interfaces:{name:string;address:string;family:string;cidr:string|null}[]};
 const when=(value:number)=>new Date(value).toLocaleString();
-export function Diagnostics({active,selectedJobId,jobs,blockedReason,onUpdated,onCancel}:{active:boolean;selectedJobId:string;jobs:Job[];blockedReason:string;
-  onUpdated:()=>void;onCancel:(job:Job)=>void}){
+export function Diagnostics({active,selectedJobId,jobs,blockedReason,onUpdated,onCancel,onAskAssistant}:{active:boolean;selectedJobId:string;jobs:Job[];blockedReason:string;
+  onUpdated:()=>void;onCancel:(job:Job)=>void;onAskAssistant?:(question:string,focusJobId?:string)=>void}){
   const [options,setOptions]=useState<Options|null>(null),[optionError,setOptionError]=useState(''),[reload,setReload]=useState(0);
   const [hostname,setHostname]=useState(''),[resolvers,setResolvers]=useState(''),[systemLookup,setSystemLookup]=useState(false);
   const [dnsPort,setDnsPort]=useState('53'),[gateway,setGateway]=useState(''),[download,setDownload]=useState(false);
@@ -55,7 +55,7 @@ export function Diagnostics({active,selectedJobId,jobs,blockedReason,onUpdated,o
     finally{inFlight.current=false;setBusy(false);}
   }
   return <section hidden={!active} className="diagnostics"><div className="section-title"><div><h2>Home tech support diagnosis</h2>
-    <p>Investigate slow Internet, streaming, DNS, IPv4/IPv6 paths and TLS.</p></div></div>
+    <p>Investigate slow Internet, streaming, DNS, IPv4/IPv6 paths and TLS.</p></div>{onAskAssistant&&<button onClick={()=>onAskAssistant('Explain my saved diagnostic results. What do they show, what is uncertain, and what should I do next?',selected?.id)}>Explain results with assistant</button>}</div>
     <p>Start with the guided Internet and streaming check, or open the targeted DNS settings below. Each run is a snapshot from this collector; compare saved results near a failure. Checks do not change network or application settings.</p>
     {blockedReason&&<p className="notice" role="status">{blockedReason}</p>}
     {optionError&&<p className="error" role="alert">{optionError} <button onClick={()=>setReload((value)=>value+1)}>Retry DNS configuration</button></p>}
@@ -98,7 +98,7 @@ export function Diagnostics({active,selectedJobId,jobs,blockedReason,onUpdated,o
       <label className="check"><input type="checkbox" checked={confirmed} disabled={busy||!!blockedReason} onChange={(event)=>setConfirmed(event.target.checked)}/>I approve sending this hostname and these exact checks.</label>
       <button className="primary" disabled={!confirmed||busy||!!blockedReason} onClick={()=>void start()}>Start approved checks</button>
     </section>}
-    <DnsBenchmark active={active} selectedJobId={selectedJobId} jobs={jobs} blockedReason={blockedReason} onUpdated={onUpdated} onCancel={onCancel}/>
+    <DnsBenchmark active={active} selectedJobId={selectedJobId} jobs={jobs} blockedReason={blockedReason} onUpdated={onUpdated} onCancel={onCancel} onAskAssistant={onAskAssistant}/>
     <section className="panel"><h3>Saved diagnoses</h3>
       {history.length>1&&report?.kind==='internet'?<details><summary>Recent Internet and streaming checks</summary><ul>{history.filter((job)=>job.spec.diagnostic?.kind==='internet'&&job.diagnosticReport).slice(0,5).map((job)=>{
         const sample=job.diagnosticReport!.internet?.find((check)=>check.kind==='transfer'),ping=job.diagnosticReport!.internet?.find((check)=>check.kind==='latency'&&check.target===INTERNET_TARGET);

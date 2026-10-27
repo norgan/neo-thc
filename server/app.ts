@@ -21,13 +21,16 @@ import {deviceEvidence} from './device.js';
 import {DnsBenchmarkRunner} from './dns-benchmark-runner.js';
 import {dnsBenchmarkPreview,parseDnsBenchmark,PUBLIC_DNS_BENCHMARK_RESOLVERS} from './dns-benchmark.js';
 import {DNS_BENCHMARK_LIMITS} from '../shared/dns-benchmark.js';
+import {AssistantService} from './assistant.js';
+import type {AssistantProvider} from './assistant-provider.js';
 
 const allowedHosts = new Set(['127.0.0.1:4318', 'localhost:4318', '127.0.0.1:5173', 'localhost:5173']);
 const allowedOrigins = new Set([...allowedHosts].map((host) => 'http://' + host));
 
-export function createApp(options: { dbPath?: string; webRoot?: string; access?:AccessPolicy; tls?:{key:Buffer;cert:Buffer}; deviceVantage?:'this-computer'|'collector'; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker; diagnosticWorkerFactory?:typeof createDiagnosticWorker; internetProbes?:InternetProbes; readDiagnosticOptions?:typeof diagnosticOptions; dnsBenchmarkRunner?:Pick<DnsBenchmarkRunner,'problem'|'run'|'capability'> } = {}) {
+export function createApp(options: { dbPath?: string; webRoot?: string; access?:AccessPolicy; tls?:{key:Buffer;cert:Buffer}; deviceVantage?:'this-computer'|'collector'; adapter?: CollectorAdapter; probeTimeoutMs?: number; discoveryAdapter?: CollectorAdapter; discoveryInterfaces?: () => DiscoveryInterface[]; testSupport?: boolean; glancesRead?: typeof glancesRequest; glancesWorkerFactory?: typeof createGlancesWorker; diagnosticWorkerFactory?:typeof createDiagnosticWorker; internetProbes?:InternetProbes; readDiagnosticOptions?:typeof diagnosticOptions; dnsBenchmarkRunner?:Pick<DnsBenchmarkRunner,'problem'|'run'|'capability'>; assistantProvider?:AssistantProvider } = {}) {
   if(options.access?.mode==='service'&&!options.tls)throw new Error('Service mode requires TLS');
   const store = new Store(options.dbPath, options.testSupport !== true);
+  const assistant=new AssistantService(store,options.assistantProvider);
   const discovery = options.discoveryAdapter ?? new DiscoveryCollector();
   const adapter = options.testSupport ? options.adapter ?? discovery : discovery;
   const interfaces = options.discoveryInterfaces ?? localInterfaces;
@@ -67,6 +70,17 @@ export function createApp(options: { dbPath?: string; webRoot?: string; access?:
   const isSynthetic = () => !store.jobs().some((job) => !!job.spec.discovery) && store.assets().every((asset) => asset.latest?.synthetic !== false);
   app.get('/api/v1/health', async () => ({ status: collectionProblem() ? 'degraded' : 'ok', synthetic: options.testSupport ? isSynthetic() : false, runtime: 'playback-desktop-v7', collector: 'explicit-scope-discovery', collectionError: collectionProblem() }));
   app.get('/api/v1/placement',async()=>({mode:options.access?.mode==='service'?'service':'local',collector:'This collector computer',deviceChecks:options.deviceVantage??'collector'}));
+  app.get('/api/v1/assistant/options',async()=>assistant.options());
+  app.post('/api/v1/assistant/preview',async(request)=>assistant.preview(request.body));
+  app.post('/api/v1/assistant/chat',{bodyLimit:32768},async(request,reply)=>{
+    const controller=new AbortController();
+    const disconnected=()=>{if(!reply.raw.writableEnded)controller.abort();};
+    reply.raw.once('close',disconnected);
+    try{return await assistant.chat(request.body,controller.signal);}
+    finally{reply.raw.removeListener('close',disconnected);}
+  });
+  app.post('/api/v1/assistant/cancel',async(request)=>assistant.cancel(request.body));
+  app.post('/api/v1/assistant/reset',async(request)=>assistant.reset(request.body));
   app.get('/api/v1/playback',async()=>({reports:store.playback()}));
   app.post('/api/v1/playback',{bodyLimit:65536},async(request,reply)=>{
     let capture;try{capture=parsePlayback(request.body);}catch(error){throw new RequestError(400,error instanceof Error?error.message:'Invalid playback report');}
@@ -213,7 +227,7 @@ export function createApp(options: { dbPath?: string; webRoot?: string; access?:
     const stats = statsActive;
     stats?.controller.abort();
     for(const read of configReads)read.controller.abort();
-    await Promise.all([stats?.done, jobs.shutdown(),Promise.allSettled([...configReads].map((read)=>read.done))]);
+    await Promise.all([stats?.done, jobs.shutdown(),assistant.shutdown(),Promise.allSettled([...configReads].map((read)=>read.done))]);
   });
   app.addHook('onClose', async () => { store.close(); });
   return { app, store, jobs };

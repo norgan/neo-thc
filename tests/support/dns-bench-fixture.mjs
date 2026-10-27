@@ -8,7 +8,9 @@ function record(value){if(trace)appendFileSync(trace,JSON.stringify({pid:process
 /** @param {string} key */
 const option=key=>args[args.indexOf(key)+1];
 const hang=()=>{setInterval(()=>{},1000);};
-record({event:'started',args});
+const credentialNames=Object.keys(process.env).filter(name=>['NEO_OPENAI_API_KEY','OPENAI_API_KEY','NEO_SERVICE_TOKEN'].includes(name.toUpperCase()));
+record({event:'started',args,protectedCredentialsPresent:credentialNames.length>0});
+if(mode==='credential-boundary'&&credentialNames.length){process.stderr.write('Unexpected protected credentials in diagnostic process.');process.exit(7);}
 if(stage==='version'){
   if(mode==='version-hang')hang();
   else if(mode==='version-invalid')process.stdout.write('SECRET arbitrary version output\n');

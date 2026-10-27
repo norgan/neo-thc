@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import {parsePlayback,playbackSummary,type PlaybackCapture,type PlaybackRecord,type DeviceEvidence} from '../shared/playback.js';
 async function api<T>(path:string,body?:unknown):Promise<T>{const r=await fetch('/api/v1/'+path,{...(body!==undefined?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json','X-Neo-Client':'local-ui'}});const data=await r.json();if(!r.ok)throw new Error(data.error??'Request failed');return data as T;}
-export function Playback({active}:{active:boolean}){
+export function Playback({active,onAskAssistant}:{active:boolean;onAskAssistant?:(question:string)=>void}){
   const [reports,setReports]=useState<PlaybackRecord[]>([]),[selected,setSelected]=useState(''),[pending,setPending]=useState<PlaybackCapture|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[device,setDevice]=useState<DeviceEvidence|null>(null);
   useEffect(()=>{if(active)void api<{reports:PlaybackRecord[]}>('playback').then(x=>{setReports(x.reports);setSelected(id=>id||x.reports[0]?.id||'');}).catch(e=>setError(e.message));},[active]);
   if(!active)return null;
@@ -10,7 +10,7 @@ export function Playback({active}:{active:boolean}){
   async function choose(file:File|undefined){if(!file)return;setError('');setDevice(null);try{if(file.size>65536)throw new Error('Choose a playback report smaller than 64 KiB.');setPending(parsePlayback(JSON.parse(await file.text())));}catch(e){setError(e instanceof Error?e.message:'Invalid playback report');}}
   async function save(){if(!pending||busy)return;setBusy(true);setError('');try{const x=await api<{report:PlaybackRecord}>('playback',pending);setReports([x.report,...reports]);setSelected(x.report.id);setPending(null);}catch(e){setError(e instanceof Error?e.message:'Could not save report');}finally{setBusy(false);}}
   async function readDevice(){setBusy(true);setError('');try{setDevice(await api<DeviceEvidence>('local-device',{}));}catch{setError('Device evidence is unavailable. No settings were changed.');}finally{setBusy(false);}}
-  return <section><div className="section-title"><div><h2>YouTube and Netflix playback</h2><p>Measure the actual player, then compare device and network evidence.</p></div></div>
+  return <section><div className="section-title"><div><h2>YouTube and Netflix playback</h2><p>Measure the actual player, then compare device and network evidence.</p></div>{onAskAssistant&&<button onClick={()=>onAskAssistant('Help me understand my saved playback and Internet results. Distinguish network buffering, device or decoding pressure, and unmeasured causes. What should I check or improve first?')}>Explain playback results</button>}</div>
     {error&&<p className="error" role="alert">{error}</p>}
     <section className="panel"><h3>Capture the problem where it happens</h3><ol><li>Open a playing YouTube or Netflix tab in Edge or Chrome.</li><li>Use the NEO Playback Companion to capture the problem, then download its report.</li><li>Import it below. Review the measurements before saving to the selected collector.</li></ol>
       <p>The companion reads the video element in your existing browser. It does not collect credentials, cookies, video titles, URLs or media. Netflix stays in its supported browser with its normal DRM.</p>
