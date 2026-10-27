@@ -2,7 +2,7 @@ name: Foundation checks
 
 on:
   pull_request:
-    branches: [main, 'feat/initial-foundation']
+    branches: [main, 'feat/initial-foundation', 'feat/dns-bench-integration']
   workflow_dispatch:
 
 permissions:

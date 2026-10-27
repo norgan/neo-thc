@@ -1,4 +1,5 @@
 import {spawn,type ChildProcess,type SpawnOptions} from 'node:child_process';
+import {subprocessEnvironment} from './subprocess-env.js';
 import {chmod,mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {isIP} from 'node:net';
 import {tmpdir} from 'node:os';
@@ -137,7 +138,7 @@ export class DnsBenchmarkRunner {
     if(!this.executable)return Promise.reject(new ProcessError('unavailable'));
     return new Promise<string>((resolve,reject)=>{
       let child:ChildProcess;
-      try{child=this.spawnProcess(this.executable!,args,{shell:false,windowsHide:true,stdio:['ignore','pipe','pipe'],...(cwd?{cwd}:{})});}
+      try{child=this.spawnProcess(this.executable!,args,{shell:false,windowsHide:true,stdio:['ignore','pipe','pipe'],env:subprocessEnvironment(),...(cwd?{cwd}:{})});}
       catch{reject(new ProcessError('unavailable'));return;}
       let settled=false,failure:ProcessFailure|null=null,bytes=0;
       const output:Buffer[]=[];

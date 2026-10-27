@@ -4,14 +4,19 @@ const fs=require('node:fs/promises');
 const {constants}=require('node:fs');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
+const {updateAssistantConfig,savedAssistantConfig,restoredAssistantConfig,environmentAssistantConfig,assistantEnvironment,assistantInfo}=require('./assistant-config.cjs');
 const root=path.join(__dirname,'..');
 const setupUrl=pathToFileURL(path.join(__dirname,'connection.html')).href;
+const assistantSetupUrl=setupUrl+'#assistant-heading';
+const isSetupUrl=url=>url===setupUrl||url===assistantSetupUrl;
 let backend,mainWindow,setupWindow,closing=false,switching=false,current={mode:'local'},chosenCa='',smokeFailure;
+let assistant={apiKey:'',model:'',remember:false,keySource:'environment'},assistantWarning='';
 const smokeFile=process.env.NEO_DESKTOP_SMOKE_FILE;
 const automated=!!smokeFile||process.env.NEO_DESKTOP_AUTOMATION==='1';
 if(smokeFile)app.disableHardwareAcceleration();
 if(process.env.NEO_DESKTOP_USER_DATA)app.setPath('userData',path.resolve(process.env.NEO_DESKTOP_USER_DATA));
 const profile=()=>path.join(app.getPath('userData'),'connection.json');
+const assistantProfile=()=>path.join(app.getPath('userData'),'assistant.json');
 const database=()=>path.join(app.getPath('userData'),'neo.sqlite');
 async function openCompanionFolder(){
   // A portable executable extracts into a temporary directory. Browser extensions
@@ -24,9 +29,14 @@ async function openCompanionFolder(){
   return shell.openPath(folder);
 }
 function encryptedStorage(){return safeStorage.isEncryptionAvailable()&&(process.platform!=='linux'||safeStorage.getSelectedStorageBackend()!=='basic_text');}
-function setupSender(event){if(!setupWindow||event.sender!==setupWindow.webContents||event.senderFrame!==setupWindow.webContents.mainFrame||event.senderFrame.url!==setupUrl)throw new Error('Unrecognized setup window');}
+function assistantStorage(){return {available:encryptedStorage(),encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value)};}
+async function writeAssistantProfile(saved){
+  const temporary=assistantProfile()+'.tmp';
+  try{await fs.writeFile(temporary,JSON.stringify(saved),{mode:0o600});await fs.rename(temporary,assistantProfile());}finally{await fs.rm(temporary,{force:true}).catch(()=>{});}
+}
+function setupSender(event){if(!setupWindow||event.sender!==setupWindow.webContents||event.senderFrame!==setupWindow.webContents.mainFrame||!isSetupUrl(event.senderFrame.url))throw new Error('Unrecognized setup window');}
 function lockWindow(win,allowed){
-  win.webContents.setWindowOpenHandler(({url})=>{if(url==='http://127.0.0.1:4318/playback-guide'||/^https:\/\/(?:help\.netflix\.com\/en\/node\/(?:30081|306)|support\.google\.com\/youtube\/answer\/78358)(?:\?.*)?$/.test(url))void shell.openExternal(url);return {action:'deny'};});
+  win.webContents.setWindowOpenHandler(({url})=>{if(url==='http://127.0.0.1:4318/playback-guide'||url==='https://platform.openai.com/api-keys'||/^https:\/\/(?:help\.netflix\.com\/en\/node\/(?:30081|306)|support\.google\.com\/youtube\/answer\/78358)(?:\?.*)?$/.test(url))void shell.openExternal(url);return {action:'deny'};});
   win.webContents.on('will-navigate',(event,url)=>{if(!allowed(url))event.preventDefault();});
   win.webContents.session.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
   win.webContents.session.setPermissionCheckHandler(()=>false);
@@ -43,7 +53,7 @@ async function stopBackend(){
   });
 }
 async function startBackend(config){
-  const child=utilityProcess.fork(path.join(__dirname,'backend.cjs'),[],{cwd:root,execArgv:[],stdio:'pipe',serviceName:'NEO collector',env:{SystemRoot:process.env.SystemRoot||'C:\\Windows',PATH:process.env.PATH||'',HOME:app.getPath('home'),TMP:app.getPath('temp'),TEMP:app.getPath('temp')}});backend=child;
+  const child=utilityProcess.fork(path.join(__dirname,'backend.cjs'),[],{cwd:root,execArgv:[],stdio:'pipe',serviceName:'NEO collector',env:{SystemRoot:process.env.SystemRoot||'C:\\Windows',PATH:process.env.PATH||'',HOME:app.getPath('home'),TMP:app.getPath('temp'),TEMP:app.getPath('temp'),...assistantEnvironment(config.mode,assistant)}});backend=child;
   if(automated&&config.mode==='local'){let bytes=0;child.stderr?.on('data',chunk=>{bytes+=chunk.length;if(bytes<4096)console.error('Collector test stderr:',chunk.toString());});}
   await new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>reject(new Error('NEO startup timed out.')),15000);
@@ -53,12 +63,28 @@ async function startBackend(config){
   });
   child.once('exit',()=>{if(backend===child&&!closing&&!switching){backend=null;dialog.showErrorBox('NEO collector stopped','Local collection stopped. Restart NEO to reconnect; displayed evidence may be out of date.');}});
 }
-function openSetup(){
+function openSetup(section){
   if(setupWindow){setupWindow.focus();return;}
   setupWindow=new BrowserWindow({width:650,height:760,backgroundColor:'#050b14',parent:mainWindow,modal:!!mainWindow,show:!automated,webPreferences:{preload:path.join(__dirname,'connection-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
-  lockWindow(setupWindow,url=>url===setupUrl);setupWindow.on('closed',()=>setupWindow=null);void setupWindow.loadURL(setupUrl);
+  lockWindow(setupWindow,isSetupUrl);setupWindow.on('closed',()=>setupWindow=null);void setupWindow.loadURL(section==='assistant'?assistantSetupUrl:setupUrl);
 }
 ipcMain.handle('neo:connection-info',event=>{setupSender(event);return {mode:current.mode,origin:current.origin||'',canRemember:encryptedStorage(),caSelected:!!chosenCa};});
+ipcMain.handle('neo:assistant-info',event=>{setupSender(event);return assistantInfo(assistant,encryptedStorage(),current.mode,assistantWarning);});
+ipcMain.handle('neo:assistant-configure',async(event,input)=>{
+  setupSender(event);if(switching)return {error:'A settings change is already in progress.'};
+  if(current.mode!=='local')return {error:'The remote collector uses its own OpenAI configuration. Return to standalone to configure this desktop.'};
+  switching=true;
+  let saved=false;
+  try{
+    const next=updateAssistantConfig(assistant,input,encryptedStorage());
+    const persisted=savedAssistantConfig(next,assistantStorage());
+    await writeAssistantProfile(persisted);
+    const restart=next.apiKey!==assistant.apiKey||next.model!==assistant.model;
+    assistant=next;assistantWarning='';saved=true;
+    if(restart){await stopBackend();await startBackend(current);await mainWindow.loadURL('http://127.0.0.1:4318/');}
+    return {ok:true,...assistantInfo(assistant,encryptedStorage(),current.mode)};
+  }catch(error){return {error:saved?'Assistant settings were saved, but the local collector could not restart. Close NEO and reopen it before collecting. Session-only keys need to be entered again.':error.message||'Assistant settings could not be saved.'};}finally{switching=false;}
+});
 ipcMain.handle('neo:choose-ca',async event=>{setupSender(event);const result=await dialog.showOpenDialog(setupWindow,{title:'Choose the server certificate authority',properties:['openFile'],filters:[{name:'CA certificate',extensions:['pem','crt','cer']}]});if(!result.canceled){const stat=await fs.stat(result.filePaths[0]);if(stat.size>1048576)throw new Error('CA certificate is too large.');chosenCa=result.filePaths[0];}return !!chosenCa;});
 ipcMain.handle('neo:connect',async(event,input)=>{
   setupSender(event);if(switching)return {error:'A connection change is already in progress.'};switching=true;
@@ -80,17 +106,21 @@ ipcMain.handle('neo:connect',async(event,input)=>{
     await mainWindow.loadURL('http://127.0.0.1:4318/');setupWindow?.close();return {ok:true};
   }catch(error){return {error:error.message||'Connection could not be changed.'};}finally{switching=false;}
 });
-ipcMain.handle('neo:open-connection',event=>{if(event.sender!==mainWindow?.webContents||event.senderFrame!==mainWindow.webContents.mainFrame||new URL(event.senderFrame.url).origin!=='http://127.0.0.1:4318')throw new Error('Unrecognized desktop window');openSetup();});
+ipcMain.handle('neo:open-connection',(event,section)=>{if(event.sender!==mainWindow?.webContents||event.senderFrame!==mainWindow.webContents.mainFrame||new URL(event.senderFrame.url).origin!=='http://127.0.0.1:4318')throw new Error('Unrecognized desktop window');if(section!==undefined&&section!=='assistant')throw new Error('Unknown desktop settings section');openSetup(section);});
 ipcMain.handle('neo:open-companion',async event=>{if(event.sender!==mainWindow?.webContents||event.senderFrame!==mainWindow.webContents.mainFrame)throw new Error('Unrecognized desktop window');return openCompanionFolder();});
 if(!app.requestSingleInstanceLock())app.quit();else{
   app.on('second-instance',()=>{mainWindow?.show();mainWindow?.focus();});
   app.whenReady().then(async()=>{
     try{
       await fs.mkdir(app.getPath('userData'),{recursive:true});
+      try{assistant=restoredAssistantConfig(JSON.parse(await fs.readFile(assistantProfile(),'utf8')),assistantStorage(),process.env);}catch(error){
+        if(error.code==='ENOENT'){try{assistant=environmentAssistantConfig(process.env);}catch{assistantWarning='OpenAI environment configuration could not be used. Enter a valid API key and model in Assistant settings.';}}
+        else assistantWarning='Saved assistant settings could not be opened. Enter the API key again; the existing saved file is unchanged until you apply settings.';
+      }
       try{const saved=JSON.parse(await fs.readFile(profile(),'utf8'));if(saved.mode==='remote'&&saved.encryptedToken&&encryptedStorage()){current={mode:'remote',origin:saved.origin,token:safeStorage.decryptString(Buffer.from(saved.encryptedToken,'base64')),caPath:saved.caPath};chosenCa=saved.caPath||'';}}catch{}
       mainWindow=new BrowserWindow({title:'NEO THC',width:1280,height:900,minWidth:800,minHeight:600,backgroundColor:'#050b14',show:!automated,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
       lockWindow(mainWindow,url=>{try{return new URL(url).origin==='http://127.0.0.1:4318';}catch{return false;}});
-      Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'NEO THC',submenu:[{label:'Desktop connection…',click:openSetup},{label:'Browser companion folder',click:()=>void openCompanionFolder()},{type:'separator'},{role:'quit'}]},{label:'View',submenu:[{role:'reload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]}]));
+      Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'NEO THC',submenu:[{label:'Desktop connection…',click:()=>openSetup()},{label:'Assistant settings…',click:()=>openSetup('assistant')},{label:'Browser companion folder',click:()=>void openCompanionFolder()},{type:'separator'},{role:'quit'}]},{label:'View',submenu:[{role:'reload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'}]}]));
       await startBackend(current);await mainWindow.loadURL('http://127.0.0.1:4318/');
       if(smokeFile){
         let rendered=false;for(let attempt=0;attempt<20&&!rendered;attempt++){rendered=await mainWindow.webContents.executeJavaScript('!!document.querySelector("h1") && document.body.textContent.includes("playback-desktop-v7")');if(!rendered)await new Promise(resolve=>setTimeout(resolve,100));}

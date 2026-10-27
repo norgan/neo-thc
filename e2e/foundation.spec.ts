@@ -136,7 +136,7 @@ test('navigation, keyboard and link-wide controls remain accessible without plac
   await page.keyboard.press('Enter');await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
   await page.keyboard.press('Tab');await expect(nav(page,'NOC')).toBeFocused();
   await page.keyboard.press('Tab');await page.keyboard.press('Enter');await expect(nav(page,'Systems')).toHaveAttribute('aria-current','page');
-  await expect(page.getByRole('navigation').getByRole('button')).toHaveCount(8);
+  await expect(page.getByRole('navigation').getByRole('button')).toHaveCount(9);
   await openDiscovery(page);await page.getByRole('combobox',{name:'Source interface'}).selectOption(iface.id);
   await page.getByRole('checkbox',{name:'Legacy NetBIOS browse-master broadcast (limited coverage)',exact:true}).check();
   await expect(page.getByText('Approve link-wide transmission before previewing these methods.',{exact:true})).toBeVisible();

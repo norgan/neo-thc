@@ -28,7 +28,7 @@ async function harness(mode='normal',options:DnsBenchmarkRunnerOptions={}){
   const children:ChildProcess[]=[],closed=new Set<ChildProcess>();let active=0,maxActive=0;
   const factory:DnsBenchmarkSpawn=(_file,args,settings)=>{
     assert.equal(settings.shell,false);assert.equal(settings.windowsHide,true);assert.deepEqual(settings.stdio,['ignore','pipe','pipe']);
-    const child=spawn(process.execPath,[fixture,mode,...args],{...settings,env:{...process.env,NEO_DNS_BENCH_TEST_TRACE:trace}});
+    const child=spawn(process.execPath,[fixture,mode,...args],{...settings,env:{...(settings.env??process.env),NEO_DNS_BENCH_TEST_TRACE:trace}});
     children.push(child);active++;maxActive=Math.max(maxActive,active);
     child.once('close',()=>{active--;closed.add(child);});return child;
   };
@@ -77,6 +77,23 @@ test('version capability is exact, repeatable and hides executable paths and raw
   assert.equal(JSON.stringify(capability).includes('861ce3'),false);
   const relative=new DnsBenchmarkRunner({executable:'relative-private-path'});
   assert.equal((await relative.capability()).available,false);assert.equal(relative.problem,null);
+});
+
+test('native benchmark version and comparisons cannot inherit assistant or service credentials',async()=>{
+  const names=['NEO_OPENAI_API_KEY','OPENAI_API_KEY','NEO_SERVICE_TOKEN'] as const;
+  const before=names.map(name=>process.env[name]);
+  for(const name of names)process.env[name]='fixture-credential-never-reaches-native-tool';
+  const h=await harness('credential-boundary'),reports:DnsBenchmarkReport[]=[];
+  try{
+    assert.equal(await h.runner.run(job(plan()),new AbortController().signal,row=>reports.push(row)),false);
+    assert.equal(reports.at(-1)?.complete,true);assert.equal(reports.at(-1)?.results[0].successfulRequests,3);
+    const starts=(await h.trace()).filter(row=>row.event==='started');
+    assert.equal(starts.length,2);assert.deepEqual(starts.map(row=>row.stage),['version','comparison']);
+    assert.ok(starts.every(row=>row.protectedCredentialsPresent===false));
+    assert.ok(names.every(name=>process.env[name]==='fixture-credential-never-reaches-native-tool'),'Parent credential environment must remain unchanged');
+  }finally{
+    await h.cleanup();names.forEach((name,index)=>{if(before[index]===undefined)delete process.env[name];else process.env[name]=before[index];});
+  }
 });
 
 test('a real process matrix covers independent resolver family, record type and protocol with at most four concurrent children',async()=>{

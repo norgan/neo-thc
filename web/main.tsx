@@ -7,12 +7,13 @@ import { Discovery } from './Discovery.js';
 import {Diagnostics} from './Diagnostics.js';
 import {Playback} from './Playback.js';
 import {Connection} from './Connection.js';
+import {Assistant} from './Assistant.js';
 import {applyTheme, initialTheme, saveTheme, type Theme} from './theme.js';
 import './theme.css';
 import './style.css';
 
-type Tab='NOC'|'Systems'|'Network'|'Diagnostics'|'Playback'|'System'|'Activity'|'Settings';
-const tabs:Tab[]=['NOC','Systems','Network','Diagnostics','Playback','System','Activity','Settings'];
+type Tab='NOC'|'Systems'|'Network'|'Diagnostics'|'Playback'|'Assistant'|'System'|'Activity'|'Settings';
+const tabs:Tab[]=['NOC','Systems','Network','Diagnostics','Playback','Assistant','System','Activity','Settings'];
 const activeJob=(job:Job)=>job.status==='queued'||job.status==='running';
 const issueText:Record<string,string>={
   access_denied:'The operating system denied this method. Review local security/firewall policy; Neo did not change it.',
@@ -66,6 +67,8 @@ function App() {
   const [refresh,setRefresh]=useState(0);
   const [showAttempts,setShowAttempts]=useState(false),[search,setSearch]=useState('');
   const [diagnosticSelection,setDiagnosticSelection]=useState('');
+  const [assistantPrompt,setAssistantPrompt]=useState<{text:string;revision:number;focusJobId?:string}>({text:'',revision:0});
+  function askAssistant(text:string,focusJobId?:string){setAssistantPrompt(value=>({text,revision:value.revision+1,...(focusJobId?{focusJobId}:{})}));setTab('Assistant');}
   const [discoveryOpen,setDiscoveryOpen]=useState(location.hash==='#discovery'),[consentRevision,setConsentRevision]=useState(0);
   const dialog=useRef<HTMLDialogElement|null>(null),opener=useRef<HTMLElement|null>(null);
   function openDiscovery(){opener.current=document.activeElement as HTMLElement;history.pushState({neoDiscovery:true},'','#discovery');setDiscoveryOpen(true);}
@@ -126,10 +129,11 @@ function App() {
       {actionError&&<div className="error">{actionError}</div>}
       {snapshot?.collectionError&&<div className="error">{snapshot.collectionError}</div>}
     </div>
-    <Diagnostics active={tab==='Diagnostics'} selectedJobId={diagnosticSelection} jobs={diagnosticJobs} blockedReason={blockedReason} onUpdated={()=>setRefresh((value)=>value+1)} onCancel={(job)=>void cancel(job)}/>
-    <Playback active={tab==='Playback'}/>
+    <Diagnostics active={tab==='Diagnostics'} selectedJobId={diagnosticSelection} jobs={diagnosticJobs} blockedReason={blockedReason} onUpdated={()=>setRefresh((value)=>value+1)} onCancel={(job)=>void cancel(job)} onAskAssistant={askAssistant}/>
+    <Playback active={tab==='Playback'} onAskAssistant={askAssistant}/>
+    <Assistant active={tab==='Assistant'} prompt={assistantPrompt} onNavigate={(target,jobId)=>{if(jobId)setDiagnosticSelection(jobId);setTab(target);}}/>
     {(running||snapshot?.statsActive)&&<div className="notice" role="status">Collection is active. You can keep using this overview. <button onClick={()=>setTab('Activity')}>View activity</button>{running&&<button disabled={busy} onClick={()=>void cancel(running)}>Cancel collection</button>}</div>}
-    {tab==='NOC'&&<section className="panel"><div className="section-title"><div><h2>Network operations centre</h2><p>Observed systems, service evidence, collection availability and reported capacity</p></div><div className="actions"><button className="primary" onClick={()=>setTab('Diagnostics')}>Diagnose slow Internet or streaming</button><button onClick={openDiscovery}>Add or rescan systems</button></div></div>
+    {tab==='NOC'&&<section className="panel"><div className="section-title"><div><h2>Network operations centre</h2><p>Observed systems, service evidence, collection availability and reported capacity</p></div><div className="actions"><button className="primary" onClick={()=>setTab('Diagnostics')}>Diagnose slow Internet or streaming</button><button onClick={()=>askAssistant('Explain my latest results and what I should improve first.')}>Ask NEO assistant</button><button onClick={openDiscovery}>Add or rescan systems</button></div></div>
       <div className="metric-grid"><div><span>Systems with responses</span><strong>{systems.filter((system)=>system.responded).length}</strong></div>
       <div><span>Advertised services</span><strong>{systems.reduce((sum,system)=>sum+system.services.filter((service)=>service.confidence==='advertised').length,0)}</strong></div>
       <div><span>Systems with metrics</span><strong>{systems.filter((system)=>snapshot?.stats?.some((stats)=>stats.assetId===system.currentAssetId&&(stats.cpuPercent!==null||stats.memory!==null))).length}</strong></div></div>

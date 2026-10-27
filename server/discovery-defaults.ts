@@ -4,13 +4,14 @@ import { isIPv4 } from 'node:net';
 import { join } from 'node:path';
 import type { DiscoveryDefaults, DiscoveryInterface } from '../shared/types.js';
 import { cidrRange, ipv4Number } from './discovery-scope.js';
+import {subprocessEnvironment} from './subprocess-env.js';
 
 const command = '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; @(Get-DnsClientServerAddress -AddressFamily IPv4 | Select-Object InterfaceAlias,ServerAddresses) | ConvertTo-Json -Compress -Depth 3';
 function readWindows(): Promise<string> {
   return new Promise((resolve, reject) => execFile(
     join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
     ['-NoProfile', '-NonInteractive', '-Command', command],
-    { shell:false, windowsHide:true, timeout:2000, maxBuffer:65536, encoding:'utf8' },
+    { shell:false, windowsHide:true, timeout:2000, maxBuffer:65536, encoding:'utf8',env:subprocessEnvironment() },
     (error, stdout) => error ? reject(new Error('DNS configuration unavailable')) : resolve(stdout),
   ));
 }

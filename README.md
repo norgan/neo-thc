@@ -59,6 +59,12 @@ Saved diagnoses show partial results, findings and a clear next step. Repeat dur
 
 **DNS benchmark: system resolvers and IPv6** adds pinned `dns-bench` 0.14.0. It compares configured system DNS and explicit public candidates across IPv4/IPv6 resolver transport, A/AAAA questions and UDP/TCP, with repeated measurements, reliability-first summaries and saved partial results. NEO reads system DNS itself and supplies it explicitly, avoiding upstream's IPv6-first Windows discovery bug. New Windows packages bundle the checksum-verified engine; source checkouts use `npm run setup:dns-bench`. See [DNS benchmark setup, scope and interpretation](docs/dns-benchmark.md). A benchmark winner describes the successful selected tests; filtering, local names, encrypted DNS and application behaviour need their own evidence.
 
+## Explain results with the NEO assistant
+
+Open **Assistant**, **Explain results with assistant** on Diagnostics, or **Explain DNS comparison** beside a DNS benchmark. The OpenAI-powered assistant uses reviewed, saved DNS/IPv6, connectivity, Internet, playback, system-stat and discovery evidence to explain what was measured, distinguish likely causes from uncertainty, and suggest prioritised improvements with verification steps. Evidence references lead back to the original measurements. Local findings remain available before an AI request.
+
+Configure an OpenAI API key in **Settings → Desktop connection → Assistant**, or on the selected collector using `NEO_OPENAI_API_KEY`. The default model is `gpt-6.1-sol`. Desktop keys are session-only unless protected OS storage is explicitly selected; remote collectors use their own key. Review the exact evidence before sending. Identifiers are minimised by default, chat is temporary, and the assistant cannot execute repairs or network tests. [Setup, evidence coverage and data boundaries](docs/assistant.md).
+
 ## Safety and data
 
 The normal browser and desktop front ends bind to 127.0.0.1 only. Their Host/Origin/client-header guards are local browser defenses, not user authentication. The separate opt-in `start:service` entry point requires an explicit listen address, exact HTTPS origin, valid certificate/key and a strong administrative token. Do not expose the local entry point or publish the service to the public Internet. Use the reviewed private LAN/VPN path described in [deployment](deploy/README.md).

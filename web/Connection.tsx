@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-declare global {interface Window {neoDesktop?:{connection:()=>Promise<void>;companion:()=>Promise<string>}}}
+declare global {interface Window {neoDesktop?:{connection:(section?:'assistant')=>Promise<void>;companion:()=>Promise<string>}}}
 export function Connection({settings=false}:{settings?:boolean}){
   const [placement,setPlacement]=useState<{mode:string;collector:string;deviceChecks:string}|null>(null);
   useEffect(()=>{const c=new AbortController();void fetch('/api/v1/placement',{signal:c.signal}).then(r=>r.ok?r.json():null).then(setPlacement).catch(()=>{});return()=>c.abort();},[]);
